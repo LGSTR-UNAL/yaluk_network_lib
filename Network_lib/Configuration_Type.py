@@ -1,6 +1,6 @@
 from .Conductor import ConductorPosition, Conductor
 from .collections import ConductorCollection
-from basic_func import lineparam
+from .basic_func import lineparam
 class Configuration_Type:
     def __init__(self):
         self.Type=''; self.Zc=None; self.Lm=None; self.Cm=None

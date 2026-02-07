@@ -54,6 +54,21 @@ def network_setting(Nodes: pd.DataFrame, Lines:pd.DataFrame, Transformers:pd.Dat
     net = nl.Network('uid_01','Example_Network')
     net.InitLatLong=Init_lat_lon
 
+    Conductor_1 = nl.Conductor()
+    Conductor_1.Radio = .005
+    Conductor_1.Resistance = 1
+    Conductor_1.Name = "Conductor ACSR"
+    Conductor_1.Description = "Conductor Calibre 2/0 - catálogo CENTELSA"
+
+
+    Config1 = nl.Configuration_Type()
+    Config1.id = "LAR1"
+    Config1.Name = "Mono LAR1"
+    Config1.Description = "Linea un solo conductor"
+    Config1.Add_conductor(Conductor_1, 10, 0)
+    Config1.Add_conductor(Conductor_1, 10, 2)
+    Config1.gen_parameters()
+    
     for n in Nodes.itertuples():
         node = nl.Node(nl.PointLatLng(n.lat, n.lon))
         node.id = n.id
@@ -67,8 +82,9 @@ def network_setting(Nodes: pd.DataFrame, Lines:pd.DataFrame, Transformers:pd.Dat
         Config_1= nl.Configuration_Type()
         Config_1.Type='Config_A'
         # Here we would set the configuration type based on l.configuration_type
-        net.AddLine(from_node, to_node, Config_1)
-
+        net.AddLine(from_node, to_node, Config1)
+    for li in net.Lines:
+        li.isFDTD=False
     return net
     
 

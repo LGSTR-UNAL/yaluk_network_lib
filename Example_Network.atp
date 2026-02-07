@@ -11,28 +11,70 @@ C  dT  >< Tmax >< Xopt >< Copt >
 MODELS
 /MODELS
 INPUT
-OUTPUT
-USE Yaluk0 AS Yaluk0000
+M0001A  {v(N0001A)}
+M0001B  {v(N0001B)}
+M0002A  {v(N0002A)}
+M0002B  {v(N0002B)}
+M0003A  {v(N0003A)}
+M0003B  {v(N0003B)}
+M0004A  {v(N0004A)}
+M0004B  {v(N0004B)}
+MODEL Yaluk1
+ -- This model is link with ATP by means of a iluminated line characteristic method
+ -- It must have four inputs for one single line (Va,Ia,Vb,Ib)
+CONST
+cond {VAL:1} --num. phases
 INPUT
-DATA
-  No_Lin:=1
+  Va[1..cond]
+  Vb[1..cond]
+VAR Vfa[1..cond],Vfb[1..cond]
 OUTPUT
-ENDUSE
-USE Yaluk0 AS Yaluk0000
+   Vfa,Vfb
+DATA
+\tNo_Lin
+MODEL yaluk_f FOREIGN YALUK_DLL_MODEL {ixdata:4, ixin:3, ixout:2, ixvar:200}
+EXEC -- using the DLL subroutine
+  USE yaluk_f AS yaluk_f
+    DATA xdata[1..4]:=[timestep,stoptime,cond,No_Lin]
+    INPUT xin[1..2*cond+1]:=[t,Va[1..cond],Vb[1..cond]]
+    OUTPUT \tVfa[1..cond]:=xout[1..cond]
+        Vfb[1..cond]:=xout[cond+1..2*cond]
+  ENDUSE
+  ENDEXEC
+ENDMODEL
+MODEL Yaluk2
+ -- This model is link with ATP by means of a iluminated line characteristic method
+ -- It must have four inputs for one single line (Va,Ia,Vb,Ib)
+CONST
+cond {VAL:2} --num. phases
 INPUT
-DATA
-  No_Lin:=2
+  Va[1..cond]
+  Vb[1..cond]
+VAR Vfa[1..cond],Vfb[1..cond]
 OUTPUT
-ENDUSE
-USE Yaluk0 AS Yaluk0000
-INPUT
+   Vfa,Vfb
 DATA
-  No_Lin:=3
-OUTPUT
-ENDUSE
+\tNo_Lin
+MODEL yaluk_f FOREIGN YALUK_DLL_MODEL {ixdata:4, ixin:3, ixout:2, ixvar:200}
+EXEC -- using the DLL subroutine
+  USE yaluk_f AS yaluk_f
+    DATA xdata[1..4]:=[timestep,stoptime,cond,No_Lin]
+    INPUT xin[1..2*cond+1]:=[t,Va[1..cond],Vb[1..cond]]
+    OUTPUT \tVfa[1..cond]:=xout[1..cond]
+        Vfb[1..cond]:=xout[cond+1..2*cond]
+  ENDUSE
+  ENDEXEC
+ENDMODEL
 ENDMODELS
 /BRANCH
 C < n1 >< n2 ><ref1><ref2>< R  >< A  >< B  >
+$INCLUDE, lcc/lcc_001.lib,N0001A,N0001B
+$INCLUDE, lcc/lcc_002.lib,N0002A,N0002B
+$INCLUDE, lcc/lcc_003.lib,N0003A,N0003B
+/SOURCE
+C < n 1><>< Ampl.  >< Freq.  ><Phase/T0><   A1   ><   T1   >< TSTART >< TSTOP  >
+/OUTPUT
+N0001AN0001BN0002AN0002BN0003AN0003BN0004AN0004B
 C ENDING DIRECTIVES
 BLANK MODELS
 BLANK BRANCH

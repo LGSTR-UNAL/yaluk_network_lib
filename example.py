@@ -85,6 +85,7 @@ def network_setting(Nodes: pd.DataFrame, Lines:pd.DataFrame, Transformers:pd.Dat
         net.AddLine(from_node, to_node, Config1)
     for li in net.Lines:
         li.isFDTD=False
+    net.MakeLccFile()
     return net
     
 

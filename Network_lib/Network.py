@@ -3,6 +3,8 @@ from sys import prefix
 import token
 from typing import List, Optional
 import math, io
+from pathlib import Path
+#from click import Path
 from .Node import PointLatLng, Node, PhaseName
 from .collections import NodeCollection, LineCollection, TrfCollection
 from .Configuration_Type import Configuration_Type
@@ -210,8 +212,10 @@ class Network(IdentifyObject):
                     file.write(f"{cp.Relative_X_location}             % Relative position\n")
     def MakeLccFile(self, ruta: str = "lcc/"):
         casenname = f"C - LCC line for: {self.name}"
-        for i, line in enumerate(self.Lines):  
-            filename = f"{ruta}lcc_{i+1:03d}.dat"
+        for i, line in enumerate(self.Lines): 
+            fname= f"lcc_{i+1:03d}.dat"
+            filename = Path("lcc") / fname
+            filename.parent.mkdir(parents=True, exist_ok=True)
             with open(filename, "w", encoding="utf-8") as file:
                 file.write(f"Line {i+1}\n")
         
@@ -228,12 +232,12 @@ class Network(IdentifyObject):
                     file.write("METRIC\n")
                     for k in range(line.Configuration.Num_conductors):
                         cp = line.Configuration.Conductors._list[k]
-                        file.write(conductor_card_lcc(k+1, cp))
+                        file.write(conductor_card_lcc(k+1, cp)+'\n')
                         
                     file.write("BLANK CARD ENDING CONDUCTOR CARDS\n")
-                    file.write(f"    100.      10                                1.                 1-9")
-                    file.write(f"    100.      1.E4                                1.                 1-9")
-                    file.write(f"    100.      1.E3                                1.         6 10    1-9")
+                    file.write(f"    100.      10                                1.                 1-9\n")
+                    file.write(f"    100.      1.E4                                1.                 1-9\n")
+                    file.write(f"    100.      1.E3                                1.         6 10    1-9\n")
                     file.write("BLANK CARD ENDING FREQUENCY CARDS\n")
                     file.write("BLANK CARD ENDING LINE CONSTANT\n")
                     file.write("DEFAULT\n")

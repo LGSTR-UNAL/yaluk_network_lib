@@ -24,6 +24,7 @@ class Node(Element_id):
         self.SurgeArresters = []
         self.Shunt_elements = []
         self.CFO=0.0; self.RatedVoltage=0.0
+        self.Directstrike=False
     @property
     def Num_conductors(self): return len(self.Phases_id)
     @property

@@ -84,7 +84,7 @@ def network_setting(Nodes: pd.DataFrame, Lines:pd.DataFrame, Transformers:pd.Dat
         # Here we would set the configuration type based on l.configuration_type
         net.AddLine(from_node, to_node, Config1)
     for li in net.Lines:
-        li.isFDTD=False
+        li.isFDTD=True
     net.MakeLccFile()
     return net
     

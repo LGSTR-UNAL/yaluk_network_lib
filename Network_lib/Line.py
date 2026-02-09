@@ -3,8 +3,8 @@ from .Node import PhaseName, Node, PointLatLng
 from .Configuration_Type import Configuration_Type
 import numpy as np
 class Line:
-    def __init__(self, N_i:Optional[Node]=None, N_j:Optional[Node]=None, Config:Optional[Configuration_Type]=None, is_FDTD:bool=True):
-        self.Line_Config = Config; self.Node_i = N_i; self.Node_j = N_j; self.isFDTD = is_FDTD; self.Phases_connected = []
+    def __init__(self, N_i:Optional[Node]=None, N_j:Optional[Node]=None, Config:Optional[Configuration_Type]=None, is_FDTD:bool=True, isDirectStrike:bool=False):
+        self.Line_Config = Config; self.Node_i = N_i; self.Node_j = N_j; self.isFDTD = is_FDTD; self.Phases_connected = []; self.isDirectStrike = isDirectStrike
         if Config: self.Configuration = Config
     @property
     def Configuration(self): return self.Line_Config
@@ -40,6 +40,10 @@ class Line:
                 d1 = np.hypot(XA0 - X0, YA0 - Y0)
                 d2 = np.hypot(XB0 - X0, YB0 - Y0)
                 DISTANCIA = min(d1, d2)
+                if DISTANCIA == d1:
+                    closest_node = self.Node_i
+                else:
+                    closest_node = self.Node_j
 
         # -------------------------------
         # Horizontal line
@@ -55,6 +59,10 @@ class Line:
                 d1 = np.hypot(XA0 - X0, YA0 - Y0)
                 d2 = np.hypot(XB0 - X0, YB0 - Y0)
                 DISTANCIA = min(d1, d2)
+                if DISTANCIA == d1:
+                    closest_node = self.Node_i
+                else:
+                    closest_node = self.Node_j
 
         # -------------------------------
         # General case (inclined line)
@@ -75,6 +83,10 @@ class Line:
                 d1 = np.hypot(XA0 - X0, YA0 - Y0)
                 d2 = np.hypot(XB0 - X0, YB0 - Y0)
                 DISTANCIA = min(d1, d2)
+                if DISTANCIA == d1:
+                    closest_node = self.Node_i
+                else:
+                    closest_node = self.Node_j
 
         # -------------------------------
         # Distance threshold logic
@@ -102,7 +114,10 @@ class Line:
         distance = self.Dist2line(point)
         if distance <= threshold:
             self.isDirectStrike = True
+            self.Node_i.Directstrike = True
             self.isFDTD = False
         else:            
             self.isDirectStrike = False
+            self.Node_i.Directstrike = False
+            self.Nodej.Directstrike = False
         return self.isFDTD 

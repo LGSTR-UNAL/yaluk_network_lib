@@ -11,6 +11,7 @@ class Trf_parameters():
 
 def data_setting():
     #Definition Nodes
+    #id of the node must be integer or string of maximum 4 characters, preferably integer, label is the name of the node, x and y are the coordinates in meters from the initial location defined in the network_setting function, if ctype is "rel" the coordinates are relative to the initial location, if ctype is "abs" the coordinates are absolute from the initial location
     Nodes = pd.DataFrame(columns=['id', 'label','y','x'])
     Nodes.loc[0] = [1, 'N1', 125300, 103000]
     Nodes.loc[1] = [2, 'N2', 125350, 103050]
@@ -18,6 +19,7 @@ def data_setting():
     Nodes.loc[3] = [4, 'N4', 125450, 103150]
 
     #Definition Lines
+    "from_node to to_node must be the id of the nodes defined in the Nodes dataframe, configuration_type must be one of the configurations defined in the network_setting function"
     Lines=pd.DataFrame(columns=['id', 'label', 'from_node', 'to_node','configuration_type'])
     Lines.loc[0] = [1, 'L1', 1, 2,'Config_A']
     Lines.loc[1] = [2, 'L2', 2, 3,'Config_A']
@@ -87,7 +89,6 @@ def network_setting(Nodes: pd.DataFrame, Lines:pd.DataFrame, Transformers:pd.Dat
     for l in Lines.itertuples():
         from_node = net.Nodes.GetByIdx(l.from_node)
         to_node = net.Nodes.GetByIdx(l.to_node)
-        # Here we would set the configuration type based on l.configuration_type
         net.AddLine(from_node, to_node, Config1)
     for li in net.Lines:
         li.isFDTD=True

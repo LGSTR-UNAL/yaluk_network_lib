@@ -85,9 +85,20 @@ class Network(IdentifyObject):
                 newNode.id = f"N{salida.index+1:04d}"
                 newNode.idx = salida.index + 1
             else:
-                newNode.id = f"N{Nodeidx:04d}"
-                newNode.idx = Nodeidx
-                salida.index = Nodeidx
+                if isinstance(Nodeidx, int):
+                    newNode.id = f"N{Nodeidx:04d}"
+                    newNode.idx = Nodeidx
+                    salida.index = Nodeidx
+                elif isinstance(Nodeidx, str):
+                    if len(Nodeidx) > 4:
+                        raise ValueError("Nodeidx string must be at most 4 characters long")
+                    newNode.id = Nodeidx
+                    try:
+                        newNode.idx = int(Nodeidx.lstrip('N'))
+                        salida.index = newNode.idx
+                    except Exception:
+                        newNode.idx = len(self.Nodes._list) + 1
+                        salida.index = newNode.idx
             self.Nodes.Add(newNode)
             salida.error = False
             salida.id = newNode.id
@@ -97,53 +108,7 @@ class Network(IdentifyObject):
             salida.index = 0
         return salida
 
-    # def AddNode(self, *args):
-        if len(args) == 1 and isinstance(args[0], PointLatLng):
-            
-            Location = args[0]
-            R = 6731000.0
-            if len(self.Nodes) < 1:
-                self.InitLatLong = Location
-            Location_X = (Location.Lng - self.InitLatLong.Lng) / 180.0 * math.pi * R
-            Location_Y = (Location.Lat - self.InitLatLong.Lat) / 180.0 * math.pi * R
-            return self.AddNode(Location_X, Location_Y)
-        elif len(args) >= 2:
-            X = float(args[0]); Y = float(args[1])
-            Nodeidx = args[2] if len(args) >= 3 else None
-            h = self.Nodes.Find(lambda n: math.isclose(n.Location_X, X, abs_tol=1e-1) and math.isclose(n.Location_Y, Y, abs_tol=1e-1)) #tolreance of 10 cm
-            salida = Network.output()
-            if h is None:
-                i = len(self.Nodes)
-                if i > 0:
-                    try:
-                        salida.index = int(self.Nodes[i-1].id.lstrip('N'))
-                    except Exception:
-                        salida.index = 0
-                else:
-                    salida.index = 0
-                newNode = Node(self.InitLatLong)
-                newNode.Location_X = X
-                newNode.Location_Y = Y
-                #if newNode.GeoLocation is None:
-                #    newNode.XY_2_LatLng(self.InitLatLong)
-                if Nodeidx is None:
-                    newNode.id = f"N{salida.index+1:04d}"
-                    newNode.idx = salida.index + 1
-                else:
-                    newNode.id = f"N{Nodeidx:04d}"
-                    newNode.idx = Nodeidx
-                    salida.index = Nodeidx
-                self.Nodes.Add(newNode)
-                salida.error = False
-                salida.id = newNode.id
-            else:
-                salida.id = h.id
-                salida.error = True
-                salida.index = 0
-            return salida
-        else:
-            raise ValueError("Invalid arguments to AddNode")
-
+    
     def AddBTNode(self, Node_connection: Node):
         id_name = f"B{Node_connection.id.lstrip('N')}"
         Ni = self.Nodes.Find(lambda n: n.id == id_name)

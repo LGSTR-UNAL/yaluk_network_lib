@@ -5,7 +5,7 @@ from typing import List, Optional
 import math, io
 from pathlib import Path
 #from click import Path
-from .Node import PointLatLng, Node, PhaseName
+from .Node import Node, PhaseName
 from .collections import NodeCollection, LineCollection, TrfCollection
 from .Configuration_Type import Configuration_Type
 from .Conductor import Conductor, ConductorPosition
@@ -15,12 +15,14 @@ from .SurgeArrester import SurgeArrester
 from .Line import Line
 from .IdentifiedObject import IdentifyObject
 from .LCC_cards import branch_card_lcc, conductor_card_lcc
+from .GeoTransform import CoordTransf, PointLatLng, PointXY
 from dataclasses import dataclass, field
 
 @dataclass
 class Network(IdentifyObject):
     InitLatLong: PointLatLng = field(
         default_factory=lambda: PointLatLng(6.1924, -75.3979))
+    InitXY: PointXY = field(default_factory=lambda: PointXY(0.0, 0.0))
     Tmax: float = 30e-6
     Dt: float = 2e-8
     Dx: float = 10.0
@@ -39,6 +41,9 @@ class Network(IdentifyObject):
             self.index = index
 
     def Init(self):
+        geo_transform = CoordTransf()
+        x,y =geo_transform.to_projected(self.InitLatLong.Lat, self.InitLatLong.Lng)
+        self.InitXY = PointXY(x,y)
         self.Lines = LineCollection()
         self.Nodes = NodeCollection()
         self.Transformers = TrfCollection()
@@ -48,8 +53,53 @@ class Network(IdentifyObject):
         self.Dt = 2e-8
         self.Dx = 10.0
 
-    def AddNode(self, *args):
+    def AddNode(self,X,Y,Nodeidx=None,ctype="rel"):
+        """Add a node to the network at coordinates (X,Y) in meters from the initial location.
+        If Nodeidx is provided, it will be used as the index for the new node (max 4 characters). 
+        Otherwise, the index will be automatically assigned based on the number of existing nodes.
+        ctype: "rel" for relative to initial location, "abs" for absolute from the initial location
+        """
+        tol_nodes = 1e-1  # Tolerance of 10 cm for node matching
+        salida = Network.output()
+        h = self.Nodes.Find(lambda n: math.isclose(n.Location_X, X, abs_tol=tol_nodes) and math.isclose(n.Location_Y, Y, abs_tol=tol_nodes)) 
+        
+        if h is None:
+            i = len(self.Nodes)
+            if i > 0:
+                try:
+                    salida.index = int(self.Nodes[i-1].id.lstrip('N'))
+                except Exception:
+                    salida.index = 0
+            else:
+                salida.index = 0
+            newNode = Node(self.InitLatLong)
+            if ctype=="abs":
+                newNode.Location_X = X - self.InitXY.X
+                newNode.Location_Y = Y - self.InitXY.Y
+            else:
+                newNode.Location_X=X
+                newNode.Location_Y=Y
+            #if newNode.GeoLocation is None:
+            #    newNode.XY_2_LatLng(self.InitLatLong)
+            if Nodeidx is None:
+                newNode.id = f"N{salida.index+1:04d}"
+                newNode.idx = salida.index + 1
+            else:
+                newNode.id = f"N{Nodeidx:04d}"
+                newNode.idx = Nodeidx
+                salida.index = Nodeidx
+            self.Nodes.Add(newNode)
+            salida.error = False
+            salida.id = newNode.id
+        else:
+            salida.id = h.id
+            salida.error = True
+            salida.index = 0
+        return salida
+
+    # def AddNode(self, *args):
         if len(args) == 1 and isinstance(args[0], PointLatLng):
+            
             Location = args[0]
             R = 6731000.0
             if len(self.Nodes) < 1:
@@ -60,7 +110,7 @@ class Network(IdentifyObject):
         elif len(args) >= 2:
             X = float(args[0]); Y = float(args[1])
             Nodeidx = args[2] if len(args) >= 3 else None
-            h = self.Nodes.Find(lambda n: math.isclose(n.Location_X, X) and math.isclose(n.Location_Y, Y))
+            h = self.Nodes.Find(lambda n: math.isclose(n.Location_X, X, abs_tol=1e-1) and math.isclose(n.Location_Y, Y, abs_tol=1e-1)) #tolreance of 10 cm
             salida = Network.output()
             if h is None:
                 i = len(self.Nodes)
@@ -74,8 +124,8 @@ class Network(IdentifyObject):
                 newNode = Node(self.InitLatLong)
                 newNode.Location_X = X
                 newNode.Location_Y = Y
-                if newNode.GeoLocation is None:
-                    newNode.XY_2_LatLng(self.InitLatLong)
+                #if newNode.GeoLocation is None:
+                #    newNode.XY_2_LatLng(self.InitLatLong)
                 if Nodeidx is None:
                     newNode.id = f"N{salida.index+1:04d}"
                     newNode.idx = salida.index + 1
@@ -103,7 +153,7 @@ class Network(IdentifyObject):
             newNode.Location_Y = Node_connection.Location_Y
             newNode.Description = " Low Voltage Node for using with transformer"
             newNode.idx = len(self.Nodes) + 1
-            newNode.XY_2_LatLng(self.InitLatLong)
+            #newNode.XY_2_LatLng(self.InitLatLong)
             newNode.id = id_name
             self.Nodes.Add(newNode)
             return newNode
@@ -178,20 +228,24 @@ class Network(IdentifyObject):
         else:
             return 0
 
-    def AddTransf(self, CHV, CLV, CHL, ground, NHV, P1=None, P2=None):
+    def AddTransf(self, label,CHV, CLV, CHL, ground, NHV, phases):
+        if isinstance(NHV, int):
+            NHV = self.Nodes.GetByIdx(NHV)
+        elif isinstance(NHV, str):
+            NHV = self.Nodes.Find(lambda n: n.id == NHV)
+        elif isinstance(NHV, Node):
+            pass
+        else:            raise ValueError("Invalid type for NHV")
+
         NLV = self.AddBTNode(NHV)
-        if P1 is not None and P2 is not None:
-            Trf = Transformer(CHV, CLV, CHL, ground, NHV, NLV, P1, P2)
-        elif P1 is not None:
-            Trf = Transformer(CHV, CLV, CHL, ground, NHV, NLV, P1)
-        else:
-            Trf = Transformer(CHV, CLV, CHL, ground, NHV, NLV)
+        Trf = Transformer(CHV, CLV, CHL, ground, NHV, NLV,phases)
         Trf.idx = 1 + len(self.Transformers._list)
         Trf.id = f"T{Trf.idx:04d}"
+        Trf.Name = label
         self.Transformers.Add(Trf)
-        NHV.Transformers.Add(Trf)
-        NLV.Transformers.Add(Trf)
-        return 1
+        NHV.Transformers.append(Trf)
+        NLV.Transformers.append(Trf)
+        return 0
 
     def AddSurgeArrester(self, ni: Node, pch_file: str, Phase_connect: int):
         SA = SurgeArrester(pch_file,ni, Phase_connect)

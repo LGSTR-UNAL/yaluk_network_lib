@@ -1,5 +1,7 @@
 import Network_lib as nl
 import pandas as pd
+
+from Network_lib.Node import PhaseName
 class Trf_parameters():
         def __init__(self,A,B,C,D):
             self.CapHV=A
@@ -9,11 +11,11 @@ class Trf_parameters():
 
 def data_setting():
     #Definition Nodes
-    Nodes = pd.DataFrame(columns=['id', 'label','lat','lon'])
-    Nodes.loc[0] = [1, 'N1', 5.0522, -76.2437]
-    Nodes.loc[1] = [2, 'N2', 5.0522, -76.2537]
-    Nodes.loc[2] = [3, 'N3', 5.0572, -76.2637]
-    Nodes.loc[3] = [4, 'N4', 5.0622, -76.2737]
+    Nodes = pd.DataFrame(columns=['id', 'label','y','x'])
+    Nodes.loc[0] = [1, 'N1', 125300, 103000]
+    Nodes.loc[1] = [2, 'N2', 125350, 103050]
+    Nodes.loc[2] = [3, 'N3', 125400, 103100]
+    Nodes.loc[3] = [4, 'N4', 125450, 103150]
 
     #Definition Lines
     Lines=pd.DataFrame(columns=['id', 'label', 'from_node', 'to_node','configuration_type'])
@@ -27,18 +29,24 @@ def data_setting():
     Tr2= Trf_parameters(440e-12, 644e-12, 115e-12, 20)
 
     #Transformers connections
-    Transformers=pd.DataFrame(columns=['id', 'label', 'from_node', 'to_node','phases','trf_type'])
-    Transformers.loc[0] = [1, 'T1', 2, 4,111,Tr1]
-    Transformers.loc[1] = [2, 'T2', 1, 3,11,Tr2]
-    Transformers.loc[2] = [3, 'T3', 1, 4,101,Tr1]
+    Transformers=pd.DataFrame(columns=['id', 'label', 'from_node', 'phases','trf_type'])
+    Transformers.loc[0] = [1, 'T1', 2, 111,'Tr1']
+    Transformers.loc[1] = [2, 'T2', 1, 11,'Tr2']
+    Transformers.loc[2] = [3, 'T3', 3, 101,'Tr1']
+    #Transformers Types
+
+    Trftype=pd.DataFrame(columns=['id', 'CHV', 'CLV', 'CHL', 'ground'])
+    Trftype.loc[0] = ['Tr1', 340e-12, 215e-12, 744e-12,10.0]
+    Trftype.loc[1] = ['Tr2', 440e-12, 115e-12, 644e-12,20.0]
+
 
     #surge arresters
     Surge_Arresters=pd.DataFrame(columns=['id', 'label', 'node', 'phases','type'])
     Surge_Arresters.loc[0] = [1, 'SA1', 2,11,'Type_A']
     Surge_Arresters.loc[1] = [2, 'SA2', 3,1,'Type_B']
-    return Nodes, Lines, Transformers, Surge_Arresters
+    return Nodes, Lines, Transformers, Surge_Arresters, Trftype
 
-def network_setting(Nodes: pd.DataFrame, Lines:pd.DataFrame, Transformers:pd.DataFrame, Surge_Arresters:pd.DataFrame):
+def network_setting(Nodes: pd.DataFrame, Lines:pd.DataFrame, Transformers:pd.DataFrame, Surge_Arresters:pd.DataFrame,Trftype:pd.DataFrame):
     # Create a new network
     len_nodes= len(Nodes)
     len_lines= len(Lines)
@@ -50,17 +58,19 @@ def network_setting(Nodes: pd.DataFrame, Lines:pd.DataFrame, Transformers:pd.Dat
         raise ValueError("No lines defined in the network.")
     print(f"Creating network with {len_nodes} nodes, {len_lines} lines, {len_transformers} transformers, and {len_surge_arresters} surge arresters.")
     # Initial location for coordinate conversion
-    Init_lat_lon= nl.PointLatLng(Nodes.loc[0,'lat'], Nodes.loc[0,'lon'])
+    #Init_lat_lon= nl.PointLatLng(Nodes.loc[0,'x'], Nodes.loc[0,'y'])
+    initxy=nl.PointXY(Nodes.loc[0,'x'], Nodes.loc[0,'y'])
+ 
     net = nl.Network('uid_01','Example_Network')
-    net.InitLatLong=Init_lat_lon
-
+    net.InitXY=initxy
+    
     Conductor_1 = nl.Conductor()
     Conductor_1.Radio = .005
     Conductor_1.Resistance = 1
     Conductor_1.Name = "Conductor ACSR"
     Conductor_1.Description = "Conductor Calibre 2/0 - catálogo CENTELSA"
 
-
+    # Dfining Configurations, it culd be severalconfigurations with different number of conductors and geometries, each line must be assigned to one of the configurations
     Config1 = nl.Configuration_Type()
     Config1.id = "LAR1"
     Config1.Name = "Mono LAR1"
@@ -68,34 +78,37 @@ def network_setting(Nodes: pd.DataFrame, Lines:pd.DataFrame, Transformers:pd.Dat
     Config1.Add_conductor(Conductor_1, 10, 0)
     Config1.Add_conductor(Conductor_1, 10, 2)
     Config1.gen_parameters()
+
+    nl.Transformer
     
     for n in Nodes.itertuples():
-        node = nl.Node(nl.PointLatLng(n.lat, n.lon))
-        node.id = n.id
-        node.Name = n.label
-        node.XY_2_LatLng(Init_lat_lon)
-        net.AddNode(n.lat, n.lon, n.id)
+       net.AddNode(n.x, n.y,Nodeidx=n.id,ctype="abs")  #You can use also ctype="rel" if you want to add nodes using coordinates relative to the initial location
     # Add lines
     for l in Lines.itertuples():
         from_node = net.Nodes.GetByIdx(l.from_node)
         to_node = net.Nodes.GetByIdx(l.to_node)
-        Config_1= nl.Configuration_Type()
-        Config_1.Type='Config_A'
         # Here we would set the configuration type based on l.configuration_type
         net.AddLine(from_node, to_node, Config1)
     for li in net.Lines:
         li.isFDTD=True
     net.MakeLccFile()
+    # Add transformers
+    for t in Transformers.itertuples():
+        node_trf=t.from_node
+        trf_types = Trftype.loc[Trftype['id'] == t.trf_type]
+        trf_type = trf_types.iloc[0] if not trf_types.empty else None
+        net.AddTransf(label=t.label,CHV=float(trf_type.CHV), CLV=float(trf_type.CLV), CHL=float(trf_type.CHL), ground=float(trf_type.ground), NHV=node_trf,  phases=t.phases)
+        
     return net
-    
+ 
 
     
 if __name__ == "__main__":
     print("Starting network creation...")
-    Nodes,Lines,Transformers,Surge_Arresters = data_setting()
+    Nodes,Lines,Transformers,Surge_Arresters,Trftype = data_setting()
     print("Data setting completed.")
     print("Creating network...")
-    net=network_setting(Nodes,Lines,Transformers,Surge_Arresters)
+    net=network_setting(Nodes,Lines,Transformers,Surge_Arresters,Trftype)
     print("Network created successfully.")
     print("Generating ATP file...")
     

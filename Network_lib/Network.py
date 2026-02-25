@@ -1,10 +1,10 @@
-
 from sys import prefix
 import token
 from typing import List, Optional
 import math, io
 from pathlib import Path
-#from click import Path
+
+# from click import Path
 from .Node import Node, PhaseName
 from .collections import NodeCollection, LineCollection, TrfCollection
 from .Configuration_Type import Configuration_Type
@@ -19,10 +19,12 @@ from .GeoTransform import CoordTransf, PointLatLng, PointXY
 from dataclasses import dataclass, field
 from datetime import date
 
+
 @dataclass
 class Network(IdentifyObject):
     InitLatLong: PointLatLng = field(
-        default_factory=lambda: PointLatLng(6.1924, -75.3979))
+        default_factory=lambda: PointLatLng(6.1924, -75.3979)
+    )
     InitXY: PointXY = field(default_factory=lambda: PointXY(0.0, 0.0))
     Tmax: float = 30e-6
     Dt: float = 2e-8
@@ -34,7 +36,7 @@ class Network(IdentifyObject):
     Transformers: TrfCollection = field(default_factory=TrfCollection)
     Shunt_elements: List[IShunt_element] = field(default_factory=list)
     SurgeArresters: List[SurgeArrester] = field(default_factory=list)
-    
+
     class output:
         def __init__(self, error=False, id_str="", index=0):
             self.error = error
@@ -43,8 +45,8 @@ class Network(IdentifyObject):
 
     def Init(self):
         geo_transform = CoordTransf()
-        x,y =geo_transform.to_projected(self.InitLatLong.Lat, self.InitLatLong.Lng)
-        self.InitXY = PointXY(x,y)
+        x, y = geo_transform.to_projected(self.InitLatLong.Lat, self.InitLatLong.Lng)
+        self.InitXY = PointXY(x, y)
         self.Lines = LineCollection()
         self.Nodes = NodeCollection()
         self.Transformers = TrfCollection()
@@ -54,33 +56,37 @@ class Network(IdentifyObject):
         self.Dt = 2e-8
         self.Dx = 10.0
 
-    def AddNode(self,X,Y,Nodeidx=None,ctype="rel"):
+    def AddNode(self, X, Y, Nodeidx=None, ctype="rel", label=None):
         """Add a node to the network at coordinates (X,Y) in meters from the initial location.
-        If Nodeidx is provided, it will be used as the index for the new node (max 4 characters). 
+        If Nodeidx is provided, it will be used as the index for the new node (max 4 characters).
         Otherwise, the index will be automatically assigned based on the number of existing nodes.
         ctype: "rel" for relative to initial location, "abs" for absolute from the initial location
+        label: optional label for the node
         """
         tol_nodes = 1e-1  # Tolerance of 10 cm for node matching
         salida = Network.output()
-        h = self.Nodes.Find(lambda n: math.isclose(n.Location_X, X, abs_tol=tol_nodes) and math.isclose(n.Location_Y, Y, abs_tol=tol_nodes)) 
-        
+        h = self.Nodes.Find(
+            lambda n: math.isclose(n.Location_X, X, abs_tol=tol_nodes)
+            and math.isclose(n.Location_Y, Y, abs_tol=tol_nodes)
+        )
+
         if h is None:
             i = len(self.Nodes)
             if i > 0:
                 try:
-                    salida.index = int(self.Nodes[i-1].id.lstrip('N'))
+                    salida.index = int(self.Nodes[i - 1].id.lstrip("N"))
                 except Exception:
                     salida.index = 0
             else:
                 salida.index = 0
             newNode = Node(self.InitLatLong)
-            if ctype=="abs":
+            if ctype == "abs":
                 newNode.Location_X = X - self.InitXY.X
                 newNode.Location_Y = Y - self.InitXY.Y
             else:
-                newNode.Location_X=X
-                newNode.Location_Y=Y
-            #if newNode.GeoLocation is None:
+                newNode.Location_X = X
+                newNode.Location_Y = Y
+            # if newNode.GeoLocation is None:
             #    newNode.XY_2_LatLng(self.InitLatLong)
             if Nodeidx is None:
                 newNode.id = f"N{salida.index+1:04d}"
@@ -92,14 +98,17 @@ class Network(IdentifyObject):
                     salida.index = Nodeidx
                 elif isinstance(Nodeidx, str):
                     if len(Nodeidx) > 4:
-                        raise ValueError("Nodeidx string must be at most 4 characters long")
+                        raise ValueError(
+                            "Nodeidx string must be at most 4 characters long"
+                        )
                     newNode.id = Nodeidx
                     try:
-                        newNode.idx = int(Nodeidx.lstrip('N'))
+                        newNode.idx = int(Nodeidx.lstrip("N"))
                         salida.index = newNode.idx
                     except Exception:
                         newNode.idx = len(self.Nodes._list) + 1
                         salida.index = newNode.idx
+            newNode.name = label if label is not None else newNode.id
             self.Nodes.Add(newNode)
             salida.error = False
             salida.id = newNode.id
@@ -109,7 +118,6 @@ class Network(IdentifyObject):
             salida.index = 0
         return salida
 
-    
     def AddBTNode(self, Node_connection: Node):
         id_name = f"B{Node_connection.id.lstrip('N')}"
         Ni = self.Nodes.Find(lambda n: n.id == id_name)
@@ -119,14 +127,14 @@ class Network(IdentifyObject):
             newNode.Location_Y = Node_connection.Location_Y
             newNode.Description = " Low Voltage Node for using with transformer"
             newNode.idx = len(self.Nodes) + 1
-            #newNode.XY_2_LatLng(self.InitLatLong)
+            # newNode.XY_2_LatLng(self.InitLatLong)
             newNode.id = id_name
             self.Nodes.Add(newNode)
             return newNode
         else:
             return Ni
 
-    def AddLine(self, Node_i: Node, Node_j: Node, C_type: Configuration_Type ) -> int:
+    def AddLine(self, Node_i: Node, Node_j: Node, C_type: Configuration_Type) -> int:
         Linea = Line()
         Linea.Node_i = Node_i
         Linea.Node_j = Node_j
@@ -134,8 +142,12 @@ class Network(IdentifyObject):
         if len(Linea.Phases_connected) > 3:
             for ii in range(3, len(Linea.Phases_connected)):
                 Linea.Phases_connected[ii] = PhaseName.N
-        h = self.Lines.Find(lambda L: ((L.Node_i == Linea.Node_i and L.Node_j == Linea.Node_j)
-            or (L.Node_i == Linea.Node_j and L.Node_j == Linea.Node_i)))
+        h = self.Lines.Find(
+            lambda L: (
+                (L.Node_i == Linea.Node_i and L.Node_j == Linea.Node_j)
+                or (L.Node_i == Linea.Node_j and L.Node_j == Linea.Node_i)
+            )
+        )
         if h is None:
             if len(self.Lines) > 0:
                 index = self.Lines._list[-1].idx
@@ -146,10 +158,10 @@ class Network(IdentifyObject):
             self.Lines.Add(Linea)
             if Linea.isFDTD:
                 self.num_lines_FDTD += 1
-            i = self.Nodes.GetByIdx(Linea.Node_i.idx)
+            i = self.Nodes.GetByName(Linea.Node_i.name)
             if i is not None:
                 i.Lines.append(Linea)
-            i = self.Nodes.GetByIdx(Linea.Node_j.idx)
+            i = self.Nodes.GetByName(Linea.Node_j.name)
             if i is not None:
                 i.Lines.append(Linea)
             return i
@@ -194,17 +206,18 @@ class Network(IdentifyObject):
         else:
             return 0
 
-    def AddTransf(self, label,CHV, CLV, CHL, ground, NHV, phases):
+    def AddTransf(self, label, CHV, CLV, CHL, ground, NHV, phases):
         if isinstance(NHV, int):
             NHV = self.Nodes.GetByIdx(NHV)
         elif isinstance(NHV, str):
             NHV = self.Nodes.Find(lambda n: n.id == NHV)
         elif isinstance(NHV, Node):
             pass
-        else:            raise ValueError("Invalid type for NHV")
+        else:
+            raise ValueError("Invalid type for NHV")
 
         NLV = self.AddBTNode(NHV)
-        Trf = Transformer(CHV, CLV, CHL, ground, NHV, NLV,phases)
+        Trf = Transformer(CHV, CLV, CHL, ground, NHV, NLV, phases)
         Trf.idx = 1 + len(self.Transformers._list)
         Trf.id = f"T{Trf.idx:04d}"
         Trf.Name = label
@@ -214,7 +227,7 @@ class Network(IdentifyObject):
         return 0
 
     def AddSurgeArrester(self, ni: Node, pch_file: str, Phase_connect: int):
-        SA = SurgeArrester(pch_file,ni, Phase_connect)
+        SA = SurgeArrester(pch_file, ni, Phase_connect)
         ni.SurgeArresters.append(SA)
         self.SurgeArresters.append(SA)
         return 0
@@ -223,9 +236,15 @@ class Network(IdentifyObject):
         for i, line in enumerate(self.Lines):
             filename = f"{ruta}linea_{i+1:03d}.txt"
             with open(filename, "w", encoding="utf-8") as file:
-                file.write(f"{line.Configuration.Conductors._list[0].Conduct.Radio}              Radio del conductor\n")
-                file.write(f"{line.Node_i.Location_X}   {line.Node_i.Location_Y}            % Posición del extremo A en XA0   YA0\n")
-                file.write(f"{line.Node_j.Location_X}   {line.Node_j.Location_Y}            % Posición del extremo B en XA0   YA0\n")
+                file.write(
+                    f"{line.Configuration.Conductors._list[0].Conduct.Radio}              Radio del conductor\n"
+                )
+                file.write(
+                    f"{line.Node_i.Location_X}   {line.Node_i.Location_Y}            % Posición del extremo A en XA0   YA0\n"
+                )
+                file.write(
+                    f"{line.Node_j.Location_X}   {line.Node_j.Location_Y}            % Posición del extremo B en XA0   YA0\n"
+                )
                 for j in range(line.Configuration.Num_conductors):
                     cp = line.Configuration.Conductors._list[j]
                     file.write(f"{cp.Height}   {cp.Conduct.Resistance}            % Height [m] and Resistance [Ohm/km]\n")
@@ -265,18 +284,26 @@ class Network(IdentifyObject):
             filename.parent.mkdir(parents=True, exist_ok=True)
             with open(filename, "w", encoding="utf-8") as file:
                 file.write(f"Line {i+1}\n")
-        
+
                 with open(filename, "w", encoding="utf-8") as file:
                     file.write("BEGIN NEW DATA CASE\n")
-                    file.write("C --------------------------------------------------------\n")
+                    file.write(
+                        "C --------------------------------------------------------\n"
+                    )
                     file.write("C -LCC data File-\n")
                     file.write(f"C Date: {today}\n")
                     file.write(casenname)
                     file.write("C Generated by YALUK DRAW 2.0\n")
-                    file.write(f"C --------------------------------------------------------\n")
+                    file.write(
+                        f"C --------------------------------------------------------\n"
+                    )
                     file.write("JMARTI SETUP\n")
                     file.write("$ERASE\n")
-                    file.write(branch_card_lcc(line.Configuration.Num_conductors, max_len=80).__str__())
+                    file.write(
+                        branch_card_lcc(
+                            line.Configuration.Num_conductors, max_len=80
+                        ).__str__()
+                    )
                     file.write("METRIC\n")
                     for k in range(line.Configuration.Num_conductors):
                         cp = line.Configuration.Conductors._list[k]
@@ -339,8 +366,8 @@ class Network(IdentifyObject):
                 for line in self.Lines:
                     if line.isFDTD:
                         self.num_lines_FDTD += 1
-                #file.write(f"**TEST lines: {self.num_lines_FDTD}\n")
-        #with open(filename, "w", encoding="utf-8") as file:
+                # file.write(f"**TEST lines: {self.num_lines_FDTD}\n")
+            # with open(filename, "w", encoding="utf-8") as file:
             file.write("BEGIN NEW DATA CASE\n")
             file.write("C --------------------------------------------------------\n")
             file.write(f"C Date: {today}\n")
@@ -351,9 +378,11 @@ class Network(IdentifyObject):
             file.write("C --------------------------------------------------------\n")
             file.write("C  dT  >< Tmax >< Xopt >< Copt >\n")
             file.write(f"{self.Dt:>8.2E}{self.Tmax:>8.2E}\n")
-            #file.write(f"{plotfreq:08d} 1       1       1       1       0       0       0       0\n")
-            #Options output files
-            file.write(f"{printfreq:8d}{plotfreq:8d}{NetwrkOut:8d}{SSPhasor:8d}{MaxMinOut:8d}{ExtrPinOut:8d}{MemSave:8d}{pl4out:8d}       0\n")
+            # file.write(f"{plotfreq:08d} 1       1       1       1       0       0       0       0\n")
+            # Options output files
+            file.write(
+                f"{printfreq:8d}{plotfreq:8d}{NetwrkOut:8d}{SSPhasor:8d}{MaxMinOut:8d}{ExtrPinOut:8d}{MemSave:8d}{pl4out:8d}       0\n"
+            )
             if direct_strike == False:
                 file.write("C ATP File for Induced Voltages Model\n")
                 # Models definition for lines with FDTD
@@ -365,25 +394,35 @@ class Network(IdentifyObject):
                     node = self.Nodes[i]
                     for j in range(node.Num_conductors):
                         ph = node.Phases_id[j]
-                        file.write(f"M{node.idx:04d}{ph.value}  {{v(N{node.idx:04d}{ph.value})}}\n")
+                        file.write(
+                            f"M{node.idx:04d}{ph.value}  {{v(N{node.idx:04d}{ph.value})}}\n"
+                        )
                 # Outputs for FDTD
                 if self.num_lines_FDTD > 0:
                     file.write("OUTPUT\n")
                     for linea in self.Lines:
                         if linea.isFDTD:
                             for j in range(len(linea.Phases_connected)):
-                                file.write(f"   L{linea.idx:04d}{linea.Phases_connected[j].value}\n")
-                                file.write(f"   R{linea.idx:04d}{linea.Phases_connected[j].value}\n")
+                                file.write(
+                                    f"   L{linea.idx:04d}{linea.Phases_connected[j].value}\n"
+                                )
+                                file.write(
+                                    f"   R{linea.idx:04d}{linea.Phases_connected[j].value}\n"
+                                )
                 # Models definition per number of conductors
-            
+
                 try:
                     max_conductor = max([n.Num_conductors for n in self.Nodes])
                 except ValueError:
                     max_conductor = 0
-                for j in range(1, max_conductor+1):
+                for j in range(1, max_conductor + 1):
                     file.write(f"MODEL Yaluk{j}\n")
-                    file.write(" -- This model is link with ATP by means of a iluminated line characteristic method\n")
-                    file.write(" -- It must have four inputs for one single line (Va,Ia,Vb,Ib)\n")
+                    file.write(
+                        " -- This model is link with ATP by means of a iluminated line characteristic method\n"
+                    )
+                    file.write(
+                        " -- It must have four inputs for one single line (Va,Ia,Vb,Ib)\n"
+                    )
                     file.write("CONST\n")
                     file.write(f"cond {{VAL:{j}}} --num. phases\n")
                     file.write("INPUT\n")
@@ -407,21 +446,31 @@ class Network(IdentifyObject):
                 # Use models for lines
                 if self.num_lines_FDTD > 0:
                     for Linea in self.Lines:
-                        
+
                         if linea.isFDTD:
-                            file.write(f"USE Yaluk{Linea.Configuration.Num_conductors} AS Yaluk{Linea.Configuration.Num_conductors:04d}\n")
+                            file.write(
+                                f"USE Yaluk{Linea.Configuration.Num_conductors} AS Yaluk{Linea.Configuration.Num_conductors:04d}\n"
+                            )
                             file.write("INPUT\n")
                             for i in range(Linea.Configuration.Num_conductors):
-                                file.write(f"  Va[{i+1}]:=M{Linea.Node_i.idx:04d}{Linea.Phases_connected[i].value}\n")
+                                file.write(
+                                    f"  Va[{i+1}]:=M{Linea.Node_i.idx:04d}{Linea.Phases_connected[i].value}\n"
+                                )
                             for i in range(Linea.Configuration.Num_conductors):
-                                file.write(f"  Vb[{i+1}]:=M{Linea.Node_j.idx:04d}{Linea.Phases_connected[i].value}\n")
+                                file.write(
+                                    f"  Vb[{i+1}]:=M{Linea.Node_j.idx:04d}{Linea.Phases_connected[i].value}\n"
+                                )
                             file.write("DATA\n")
                             file.write(f"  No_Lin:={Linea.idx}\n")
                             file.write("OUTPUT\n")
                             for i in range(Linea.Configuration.Num_conductors):
-                                file.write(f"  L{Linea.idx:04d}{Linea.Phases_connected[i].value}:=Vfa[{i+1}]\n")
+                                file.write(
+                                    f"  L{Linea.idx:04d}{Linea.Phases_connected[i].value}:=Vfa[{i+1}]\n"
+                                )
                             for i in range(Linea.Configuration.Num_conductors):
-                                file.write(f"  R{Linea.idx:04d}{Linea.Phases_connected[i].value}:=Vfb[{i+1}]\n")
+                                file.write(
+                                    f"  R{Linea.idx:04d}{Linea.Phases_connected[i].value}:=Vfb[{i+1}]\n"
+                                )
                             file.write("ENDUSE\n")
                 file.write("ENDMODELS\n")
             else:
@@ -433,40 +482,38 @@ class Network(IdentifyObject):
             for Linea in self.Lines:
                 if Linea.isFDTD:
                     for i in range(Linea.Configuration.Num_conductors):
-                        DevNum=f"5{(i+1)}"
-                        #file.write(f"{DevNum:2d}N{Linea.Node_i.idx:04d}{Linea.Phases_connected[i].value}L{Linea.idx:04d}{Linea.Phases_connected[i].value}            {Linea.Configuration.Zc[0,0]:6.1f} 
+                        DevNum = f"5{(i+1)}"
+                        # file.write(f"{DevNum:2d}N{Linea.Node_i.idx:04d}{Linea.Phases_connected[i].value}L{Linea.idx:04d}{Linea.Phases_connected[i].value}            {Linea.Configuration.Zc[0,0]:6.1f}
                         #                                                         0\n")
                         file.write(
-                                f"{DevNum}"
-                                f"N{Linea.Node_i.idx:04d}"
-                                f"{Linea.Phases_connected[i].value}"
-                                f"L{Linea.idx:04d}"
-                                f"{Linea.Phases_connected[i].value}"
-                                f"{'':12}"
-                                f"{Linea.Configuration.Zc[i, 0]:06.1f}"
-                                )
-                        
+                            f"{DevNum}"
+                            f"N{Linea.Node_i.idx:04d}"
+                            f"{Linea.Phases_connected[i].value}"
+                            f"L{Linea.idx:04d}"
+                            f"{Linea.Phases_connected[i].value}"
+                            f"{'':12}"
+                            f"{Linea.Configuration.Zc[i, 0]:06.1f}"
+                        )
+
                         for j in range(1, i + 1):
                             test_line = (j + 1) % 3
 
                             if test_line == 1:
                                 # Create a new line
                                 file.write(
-                                    f"\n{'':26}"
-                                    f"{Linea.Configuration.Zc[i, j]:06.1f}"
+                                    f"\n{'':26}" f"{Linea.Configuration.Zc[i, j]:06.1f}"
                                 )
                             else:
                                 file.write(
-                                    f"{'':12}"
-                                    f"{Linea.Configuration.Zc[i, j]:06.1f}"
+                                    f"{'':12}" f"{Linea.Configuration.Zc[i, j]:06.1f}"
                                 )
 
                         file.write("\n")
 
                     for i in range(Linea.Configuration.Num_conductors):
-                        #file.write(f"  N{Linea.Node_j.idx:04d}{Linea.Phases_connected[i].value}R{Linea.idx:04d}{Linea.Phases_connected[i].value}            {440.2:6.1f}                                               0\n")
-                        DevNum=f"5{(i+1)}"
-                        #file.write(f"{DevNum:2d}N{Linea.Node_i.idx:04d}{Linea.Phases_connected[i].value}L{Linea.idx:04d}{Linea.Phases_connected[i].value}            {Linea.Configuration.Zc[0,0]:6.1f} 
+                        # file.write(f"  N{Linea.Node_j.idx:04d}{Linea.Phases_connected[i].value}R{Linea.idx:04d}{Linea.Phases_connected[i].value}            {440.2:6.1f}                                               0\n")
+                        DevNum = f"5{(i+1)}"
+                        # file.write(f"{DevNum:2d}N{Linea.Node_i.idx:04d}{Linea.Phases_connected[i].value}L{Linea.idx:04d}{Linea.Phases_connected[i].value}            {Linea.Configuration.Zc[0,0]:6.1f}
                         #                                                         0\n")
                         file.write(
                                 f"{DevNum}"
@@ -484,56 +531,56 @@ class Network(IdentifyObject):
                             if test_line == 1:
                                 # Create a new line
                                 file.write(
-                                    f"\n{'':26}"
-                                    f"{Linea.Configuration.Zc[i, j]:06.1f}"
+                                    f"\n{'':26}" f"{Linea.Configuration.Zc[i, j]:06.1f}"
                                 )
                             else:
                                 file.write(
-                                    f"{'':12}"
-                                    f"{Linea.Configuration.Zc[i, j]:06.1f}"
+                                    f"{'':12}" f"{Linea.Configuration.Zc[i, j]:06.1f}"
                                 )
 
                         file.write("\n")
             # writing lumped elements
-            
+
             for E in self.Shunt_elements:
                 E.write_atp_file(file)
             # writing transformers
             for T in self.Transformers:
                 T.write_atp_file(file)
-            #writing surge arresters
+            # writing surge arresters
             for SA in self.SurgeArresters:
                 SA.write_atp_file(file)
-            #writing LCC lines
+            # writing LCC lines
             for Linea in self.Lines:
-                
+
                 if not Linea.isFDTD:
                     lcc_filename = f"lcc/lcc_{Linea.idx:03d}.lib"
-                    lcc_line=""
+                    lcc_line = ""
                     token = f"$INCLUDE, {lcc_filename}"
                     lcc_line += token
                     for ph in Linea.Phases_connected:
-                        token=f"N{Linea.Node_i.idx:04d}{ph.value}" 
-                        if len(lcc_line) + len(token) > (max_len-3):
-                            lcc_line+= ','
+                        token = f"N{Linea.Node_i.idx:04d}{ph.value}"
+                        if len(lcc_line) + len(token) > (max_len - 3):
+                            lcc_line += ","
                             lcc_line = lcc_line.ljust(78) + "$$\n"
                             file.write(lcc_line)
-                            lcc_line = "  "+token
+                            lcc_line = "  " + token
                         else:
-                            lcc_line += ','+token
-                    file.write(lcc_line+'\n')       
+                            lcc_line += "," + token
+                    file.write(lcc_line + "\n")
             # SOURCES
-            file.write("/SOURCE\n") 
-            file.write("C < n 1><>< Ampl.  >< Freq.  ><Phase/T0><   A1   ><   T1   >< TSTART >< TSTOP  >\n")
+            file.write("/SOURCE\n")
+            file.write(
+                "C < n 1><>< Ampl.  >< Freq.  ><Phase/T0><   A1   ><   T1   >< TSTART >< TSTOP  >\n"
+            )
             for Linea in self.Lines:
                 if Linea.isFDTD:
                     CARD_BODY = "                                                             0      1.E3\n"
                     for phase in Linea.Phases_connected:
                         file.write(f"60L{Linea.idx:04d}{phase.value}{CARD_BODY}")
-                        file.write(f"60R{Linea.idx:04d}{phase.value}{CARD_BODY}")       
-            #OUTPUT
+                        file.write(f"60R{Linea.idx:04d}{phase.value}{CARD_BODY}")
+            # OUTPUT
             file.write("/OUTPUT\n")
-            c_line=""
+            c_line = ""
             for Node in self.Nodes:
                 for i in range(Node.Num_conductors):
                     ph = Node.Phases_id[i]

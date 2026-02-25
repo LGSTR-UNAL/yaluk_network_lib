@@ -1,4 +1,6 @@
 from typing import List, Callable, Optional, Iterator
+
+
 class SimpleCollection:
     def __init__(self):
         self._list = []
@@ -18,7 +20,30 @@ class SimpleCollection:
     def __getitem__(self, i):
         return self._list[i]
 
+
 class NodeCollection(SimpleCollection):
+    def __init__(self):
+        super().__init__()
+        self._by_name = {}
+
+    def Add(self, n):
+        if n.name in self._by_name:
+            raise ValueError(f"Duplicate node name {n.name}")
+        self._by_name[n.name] = n
+        self._list.append(n)
+
+    def Remove(self, n):
+        self._list.remove(n)
+        del self._by_name[n.name]
+
+    def Find(self, pred):
+        return next((x for x in self._list if pred(x)), None)
+
+    def GetByName(self, name):
+        return self._by_name.get(name)
+
+
+class LineCollection(SimpleCollection):
     def __init__(self):
         super().__init__()
         self._by_idx = {}
@@ -39,7 +64,14 @@ class NodeCollection(SimpleCollection):
     def GetByIdx(self, idx):
         return self._by_idx.get(idx)
 
-class LineCollection(NodeCollection): pass
-class ConductorCollection(SimpleCollection): pass
-class ConfigurationCollection(SimpleCollection): pass
-class TrfCollection(SimpleCollection): pass
+
+class ConductorCollection(SimpleCollection):
+    pass
+
+
+class ConfigurationCollection(SimpleCollection):
+    pass
+
+
+class TrfCollection(SimpleCollection):
+    pass

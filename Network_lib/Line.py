@@ -7,6 +7,13 @@ class Line:
         self.Line_Config = Config; self.Node_i = N_i; self.Node_j = N_j; self.isFDTD = is_FDTD; self.Phases_connected = []; self.isDirectStrike = isDirectStrike
         if Config: self.Configuration = Config
     @property
+    def length(self) -> float:
+        if self.Node_i and self.Node_j:
+            dx = self.Node_j.Location_X - self.Node_i.Location_X
+            dy = self.Node_j.Location_Y - self.Node_i.Location_Y
+            return np.hypot(dx, dy)
+        return 0.0
+    @property
     def Configuration(self): return self.Line_Config
     @Configuration.setter
     def Configuration(self, value: Configuration_Type):

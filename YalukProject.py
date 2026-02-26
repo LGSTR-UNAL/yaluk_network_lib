@@ -1,8 +1,8 @@
 import os
 import subprocess
 
-from Network_lib import Network
-from Lightning_lib import (
+from .Network_lib import Network
+from .Lightning_lib import (
     Lightning,
     Lightning_stat,
     LightningChannel,
@@ -115,4 +115,3 @@ class YalukProject:
             [atp_executable, atp_file],
             check=False,
         )
-

@@ -1,3 +1,4 @@
+import os
 from sys import prefix
 import token
 from typing import List, Optional
@@ -233,6 +234,7 @@ class Network(IdentifyObject):
         return 0
 
     def MakeLineFiles(self, ruta: str = "CaseFiles/"):
+        os.makedirs(ruta, exist_ok=True)
         for i, line in enumerate(self.Lines):
             filename = f"{ruta}linea_{i+1:03d}.txt"
             with open(filename, "w", encoding="utf-8") as file:
@@ -247,18 +249,26 @@ class Network(IdentifyObject):
                 )
                 for j in range(line.Configuration.Num_conductors):
                     cp = line.Configuration.Conductors._list[j]
-                    file.write(f"{cp.Height}   {cp.Conduct.Resistance}            % Height [m] and Resistance [Ohm/km]\n")
-                    file.write(f"{cp.Relative_X_location}             % Relative position\n")
-    def MakeLccFile(self, ruta: str = "lcc",
-                    soil_resistivity: float = 100.0, 
-                    Freq_mat: float = 1e3, 
-                    Freq_ss: float = 1e6, 
-                    freq_init: float = 100., 
-                    decades: int = 6, 
-                    points_decade: int = 10):
+                    file.write(
+                        f"{cp.Height}   {cp.Conduct.Resistance}            % Height [m] and Resistance [Ohm/km]\n"
+                    )
+                    file.write(
+                        f"{cp.Relative_X_location}             % Relative position\n"
+                    )
+
+    def MakeLccFile(
+        self,
+        ruta: str = "lcc",
+        soil_resistivity: float = 100.0,
+        Freq_mat: float = 1e3,
+        Freq_ss: float = 1e6,
+        freq_init: float = 100.0,
+        decades: int = 6,
+        points_decade: int = 10,
+    ):
         """
         Docstring for MakeLccFile
-        
+
         :param self: Description
         :param ruta: path to save the LCC files
         :type ruta: str
@@ -277,9 +287,9 @@ class Network(IdentifyObject):
         """
         today = date.today()
         casenname = f"C - LCC line for: {self.name}"
-        for i, line in enumerate(self.Lines): 
-            
-            fname= f"lcc_{i+1:03d}.dat"
+        for i, line in enumerate(self.Lines):
+
+            fname = f"lcc_{i+1:03d}.dat"
             filename = Path(ruta) / fname
             filename.parent.mkdir(parents=True, exist_ok=True)
             with open(filename, "w", encoding="utf-8") as file:
@@ -307,12 +317,18 @@ class Network(IdentifyObject):
                     file.write("METRIC\n")
                     for k in range(line.Configuration.Num_conductors):
                         cp = line.Configuration.Conductors._list[k]
-                        file.write(conductor_card_lcc(k+1, cp)+'\n')
-                    
+                        file.write(conductor_card_lcc(k + 1, cp) + "\n")
+
                     file.write("BLANK CARD ENDING CONDUCTOR CARDS\n")
-                    file.write(f"{soil_resistivity:8.2f}{Freq_mat:10.2e}{" ":<26}{line.length:8.4}{seg_ground:>6d}           1-9\n")
-                    file.write(f"{soil_resistivity:8.2f}{Freq_ss:10.2e}{" ":<26}{line.length:8.4}{seg_ground:>6d}           1-9\n")
-                    file.write(f"{soil_resistivity:8.2f}{freq_init:10.2e}{" ":<26}{line.length:8.4}{seg_ground:>6d}{decades:>4d}{points_decade:>3d}    1-9\n")
+                    file.write(
+                        f"{soil_resistivity:8.2f}{Freq_mat:10.2e}{" ":<26}{line.length:8.4}{1:>6d}           1-9\n"
+                    )
+                    file.write(
+                        f"{soil_resistivity:8.2f}{Freq_ss:10.2e}{" ":<26}{line.length:8.4}{1:>6d}           1-9\n"
+                    )
+                    file.write(
+                        f"{soil_resistivity:8.2f}{freq_init:10.2e}{" ":<26}{line.length:8.4}{1:>6d}{decades:>4d}{points_decade:>3d}    1-9\n"
+                    )
                     file.write("BLANK CARD ENDING FREQUENCY CARDS\n")
                     file.write("BLANK CARD ENDING LINE CONSTANT\n")
                     file.write("DEFAULT\n")
@@ -320,19 +336,23 @@ class Network(IdentifyObject):
                     file.write("BLANK CARD ENDING JMARTI SETUP\n")
                     file.write("BEGIN NEW DATA CASE\n")
                     file.write("BLANK CARD\n")
-    def MakeAtpFile(self, ruta: str = "", 
-                    direct_strike: bool = False,
-                    printfreq: int = 999999, 
-                    plotfreq: int = 1, 
-                    pl4out: int = 1, 
-                    NetwrkOut: int = 1, 
-                    SSPhasor: int = 1, 
-                    MaxMinOut: int = 1, 
-                    MemSave: int = 0, 
-                    ExtrPinOut: int = 0):
+
+    def MakeAtpFile(
+        self,
+        ruta: str = "",
+        direct_strike: bool = False,
+        printfreq: int = 999999,
+        plotfreq: int = 1,
+        pl4out: int = 1,
+        NetwrkOut: int = 1,
+        SSPhasor: int = 1,
+        MaxMinOut: int = 1,
+        MemSave: int = 0,
+        ExtrPinOut: int = 0,
+    ):
         """
         Docstring for MakeAtpFile
-        
+
         :param self: Description
         :param ruta: Description
         :type ruta: str
@@ -433,11 +453,17 @@ class Network(IdentifyObject):
                     file.write("   Vfa,Vfb\n")
                     file.write("DATA\n")
                     file.write("    No_Lin\n")
-                    file.write("MODEL yaluk_f FOREIGN YALUK_DLL_MODEL {ixdata:4, ixin:3, ixout:2, ixvar:200}\n")
+                    file.write(
+                        "MODEL yaluk_f FOREIGN YALUK_DLL_MODEL {ixdata:4, ixin:3, ixout:2, ixvar:200}\n"
+                    )
                     file.write("EXEC -- using the DLL subroutine\n")
                     file.write("  USE yaluk_f AS yaluk_f\n")
-                    file.write("    DATA xdata[1..4]:=[timestep,stoptime,cond,No_Lin]\n")
-                    file.write("    INPUT xin[1..2*cond+1]:=[t,Va[1..cond],Vb[1..cond]]\n")
+                    file.write(
+                        "    DATA xdata[1..4]:=[timestep,stoptime,cond,No_Lin]\n"
+                    )
+                    file.write(
+                        "    INPUT xin[1..2*cond+1]:=[t,Va[1..cond],Vb[1..cond]]\n"
+                    )
                     file.write("    OUTPUT Vfa[1..cond]:=xout[1..cond]\n")
                     file.write("        Vfb[1..cond]:=xout[cond+1..2*cond]\n")
                     file.write("  ENDUSE\n")
@@ -516,15 +542,15 @@ class Network(IdentifyObject):
                         # file.write(f"{DevNum:2d}N{Linea.Node_i.idx:04d}{Linea.Phases_connected[i].value}L{Linea.idx:04d}{Linea.Phases_connected[i].value}            {Linea.Configuration.Zc[0,0]:6.1f}
                         #                                                         0\n")
                         file.write(
-                                f"{DevNum}"
-                                f"N{Linea.Node_j.idx:04d}"
-                                f"{Linea.Phases_connected[i].value}"
-                                f"R{Linea.idx:04d}"
-                                f"{Linea.Phases_connected[i].value}"
-                                f"{'':12}"
-                                f"{Linea.Configuration.Zc[i, 0]:06.1f}"
-                                )
-                        
+                            f"{DevNum}"
+                            f"N{Linea.Node_j.idx:04d}"
+                            f"{Linea.Phases_connected[i].value}"
+                            f"R{Linea.idx:04d}"
+                            f"{Linea.Phases_connected[i].value}"
+                            f"{'':12}"
+                            f"{Linea.Configuration.Zc[i, 0]:06.1f}"
+                        )
+
                         for j in range(1, i + 1):
                             test_line = (j + 1) % 3
 

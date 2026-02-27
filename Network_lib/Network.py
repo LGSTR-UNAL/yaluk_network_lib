@@ -1,3 +1,4 @@
+import os
 from sys import prefix
 import token
 from typing import List, Optional
@@ -140,7 +141,7 @@ class Network(IdentifyObject):
         Linea.Node_j = Node_j
         Linea.Configuration = C_type
         if len(Linea.Phases_connected) > 3:
-            for ii in range(3, len(Linea.Phases_connected)):
+            for ii in range(3, len(Linea.Phases_connected) + 1):
                 Linea.Phases_connected[ii] = PhaseName.N
         h = self.Lines.Find(
             lambda L: (
@@ -233,6 +234,7 @@ class Network(IdentifyObject):
         return 0
 
     def MakeLineFiles(self, ruta: str = "CaseFiles/"):
+        os.makedirs(ruta, exist_ok=True)
         for i, line in enumerate(self.Lines):
             filename = f"{ruta}linea_{i+1:03d}.txt"
             with open(filename, "w", encoding="utf-8") as file:
@@ -247,18 +249,26 @@ class Network(IdentifyObject):
                 )
                 for j in range(line.Configuration.Num_conductors):
                     cp = line.Configuration.Conductors._list[j]
-                    file.write(f"{cp.Height}   {cp.Conduct.Resistance}            % Height [m] and Resistance [Ohm/km]\n")
-                    file.write(f"{cp.Relative_X_location}             % Relative position\n")
-    def MakeLccFile(self, ruta: str = "lcc",
-                    soil_resistivity: float = 100.0, 
-                    Freq_mat: float = 1e3, 
-                    Freq_ss: float = 1e6, 
-                    freq_init: float = 100., 
-                    decades: int = 6, 
-                    points_decade: int = 10):
+                    file.write(
+                        f"{cp.Height}   {cp.Conduct.Resistance}            % Height [m] and Resistance [Ohm/km]\n"
+                    )
+                    file.write(
+                        f"{cp.Relative_X_location}             % Relative position\n"
+                    )
+
+    def MakeLccFile(
+        self,
+        ruta: str = "lcc",
+        soil_resistivity: float = 100.0,
+        Freq_mat: float = 1e3,
+        Freq_ss: float = 1e6,
+        freq_init: float = 100.0,
+        decades: int = 6,
+        points_decade: int = 10,
+    ):
         """
         Docstring for MakeLccFile
-        
+
         :param self: Description
         :param ruta: path to save the LCC files
         :type ruta: str
@@ -277,9 +287,9 @@ class Network(IdentifyObject):
         """
         today = date.today()
         casenname = f"C - LCC line for: {self.name}"
-        for i, line in enumerate(self.Lines): 
-            
-            fname= f"lcc_{i+1:03d}.dat"
+        for i, line in enumerate(self.Lines):
+
+            fname = f"lcc_{i+1:03d}.dat"
             filename = Path(ruta) / fname
             filename.parent.mkdir(parents=True, exist_ok=True)
             with open(filename, "w", encoding="utf-8") as file:
@@ -307,12 +317,18 @@ class Network(IdentifyObject):
                     file.write("METRIC\n")
                     for k in range(line.Configuration.Num_conductors):
                         cp = line.Configuration.Conductors._list[k]
-                        file.write(conductor_card_lcc(k+1, cp)+'\n')
-                    
+                        file.write(conductor_card_lcc(k + 1, cp) + "\n")
+
                     file.write("BLANK CARD ENDING CONDUCTOR CARDS\n")
-                    file.write(f"{soil_resistivity:8.2f}{Freq_mat:10.2e}{" ":<26}{line.length:8.4}{seg_ground:>6d}           1-9\n")
-                    file.write(f"{soil_resistivity:8.2f}{Freq_ss:10.2e}{" ":<26}{line.length:8.4}{seg_ground:>6d}           1-9\n")
-                    file.write(f"{soil_resistivity:8.2f}{freq_init:10.2e}{" ":<26}{line.length:8.4}{seg_ground:>6d}{decades:>4d}{points_decade:>3d}    1-9\n")
+                    file.write(
+                        f"{soil_resistivity:8.2f}{Freq_mat:10.2e}{" ":<26}{line.length:8.4}{1:>6d}           1-9\n"
+                    )
+                    file.write(
+                        f"{soil_resistivity:8.2f}{Freq_ss:10.2e}{" ":<26}{line.length:8.4}{1:>6d}           1-9\n"
+                    )
+                    file.write(
+                        f"{soil_resistivity:8.2f}{freq_init:10.2e}{" ":<26}{line.length:8.4}{1:>6d}{decades:>4d}{points_decade:>3d}    1-9\n"
+                    )
                     file.write("BLANK CARD ENDING FREQUENCY CARDS\n")
                     file.write("BLANK CARD ENDING LINE CONSTANT\n")
                     file.write("DEFAULT\n")
@@ -320,19 +336,23 @@ class Network(IdentifyObject):
                     file.write("BLANK CARD ENDING JMARTI SETUP\n")
                     file.write("BEGIN NEW DATA CASE\n")
                     file.write("BLANK CARD\n")
-    def MakeAtpFile(self, ruta: str = "", 
-                    direct_strike: bool = False,
-                    printfreq: int = 999999, 
-                    plotfreq: int = 1, 
-                    pl4out: int = 1, 
-                    NetwrkOut: int = 1, 
-                    SSPhasor: int = 1, 
-                    MaxMinOut: int = 1, 
-                    MemSave: int = 0, 
-                    ExtrPinOut: int = 0):
+
+    def MakeAtpFile(
+        self,
+        ruta: str = "",
+        direct_strike: bool = False,
+        printfreq: int = 999999,
+        plotfreq: int = 1,
+        pl4out: int = 1,
+        NetwrkOut: int = 1,
+        SSPhasor: int = 1,
+        MaxMinOut: int = 1,
+        MemSave: int = 0,
+        ExtrPinOut: int = 0,
+    ):
         """
         Docstring for MakeAtpFile
-        
+
         :param self: Description
         :param ruta: Description
         :type ruta: str
@@ -394,9 +414,7 @@ class Network(IdentifyObject):
                     node = self.Nodes[i]
                     for j in range(node.Num_conductors):
                         ph = node.Phases_id[j]
-                        file.write(
-                            f"M{node.idx:04d}{ph.value}  {{v(N{node.idx:04d}{ph.value})}}\n"
-                        )
+                        file.write(f"M{node.idx:04d}{ph}  {{v(N{node.idx:04d}{ph})}}\n")
                 # Outputs for FDTD
                 if self.num_lines_FDTD > 0:
                     file.write("OUTPUT\n")
@@ -415,34 +433,126 @@ class Network(IdentifyObject):
                     max_conductor = max([n.Num_conductors for n in self.Nodes])
                 except ValueError:
                     max_conductor = 0
-                for j in range(1, max_conductor + 1):
-                    file.write(f"MODEL Yaluk{j}\n")
-                    file.write(
-                        " -- This model is link with ATP by means of a iluminated line characteristic method\n"
-                    )
-                    file.write(
-                        " -- It must have four inputs for one single line (Va,Ia,Vb,Ib)\n"
-                    )
-                    file.write("CONST\n")
-                    file.write(f"cond {{VAL:{j}}} --num. phases\n")
-                    file.write("INPUT\n")
-                    file.write("  Va[1..cond]\n")
-                    file.write("  Vb[1..cond]\n")
-                    file.write("VAR Vfa[1..cond],Vfb[1..cond]\n")
-                    file.write("OUTPUT\n")
-                    file.write("   Vfa,Vfb\n")
-                    file.write("DATA\n")
-                    file.write("    No_Lin\n")
-                    file.write("MODEL yaluk_f FOREIGN YALUK_DLL_MODEL {ixdata:4, ixin:3, ixout:2, ixvar:200}\n")
-                    file.write("EXEC -- using the DLL subroutine\n")
-                    file.write("  USE yaluk_f AS yaluk_f\n")
-                    file.write("    DATA xdata[1..4]:=[timestep,stoptime,cond,No_Lin]\n")
-                    file.write("    INPUT xin[1..2*cond+1]:=[t,Va[1..cond],Vb[1..cond]]\n")
-                    file.write("    OUTPUT Vfa[1..cond]:=xout[1..cond]\n")
-                    file.write("        Vfb[1..cond]:=xout[cond+1..2*cond]\n")
-                    file.write("  ENDUSE\n")
-                    file.write("  ENDEXEC\n")
-                    file.write("ENDMODEL\n")
+
+                file.write("MODEL Yaluk1\n")
+                file.write(
+                    " -- This model is link with ATP by means of a iluminated line characteristic method\n"
+                )
+                file.write(
+                    " -- It must have four inputs for one single line (Va,Ia,Vb,Ib)\n"
+                )
+                file.write("CONST\n")
+                file.write("cond {VAL:1} --num. phases\n")
+                file.write("INPUT\n")
+                file.write("  Va[1..cond]\n")
+                file.write("  Vb[1..cond]\n")
+                file.write("VAR Vfa[1..cond],Vfb[1..cond]\n")
+                file.write("OUTPUT\n")
+                file.write("   Vfa,Vfb\n")
+                file.write("DATA\n")
+                file.write("	No_Lin\n")
+                file.write(
+                    "MODEL yaluk_f FOREIGN YALUK_DLL_MODEL {ixdata:4, ixin:3, ixout:2, ixvar:200}\n"
+                )
+                file.write("EXEC -- using the DLL subroutine\n")
+                file.write("  USE yaluk_f AS yaluk_f\n")
+                file.write("    DATA xdata[1..4]:=[timestep,stoptime,cond,No_Lin]\n")
+                file.write("    INPUT xin[1..2*cond+1]:=[t,Va[1..cond],Vb[1..cond]]\n")
+                file.write("    OUTPUT 	Vfa[1..cond]:=xout[1..cond]\n")
+                file.write("		Vfb[1..cond]:=xout[cond+1..2*cond]\n")
+                file.write("  ENDUSE\n")
+                file.write("  ENDEXEC\n")
+                file.write("ENDMODEL\n")
+                file.write("MODEL Yaluk2\n")
+                file.write(
+                    " -- This model is link with ATP by means of a iluminated line characteristic method\n"
+                )
+                file.write(
+                    " -- It must have four inputs for one single line (Va,Ia,Vb,Ib)\n"
+                )
+                file.write("CONST\n")
+                file.write("cond {VAL:2} --num. phases\n")
+                file.write("INPUT\n")
+                file.write("  Va[1..cond]\n")
+                file.write("  Vb[1..cond]\n")
+                file.write("VAR Vfa[1..cond],Vfb[1..cond]\n")
+                file.write("OUTPUT\n")
+                file.write("   Vfa,Vfb\n")
+                file.write("DATA\n")
+                file.write("	No_Lin\n")
+                file.write(
+                    "MODEL yaluk_f FOREIGN YALUK_DLL_MODEL {ixdata:4, ixin:5, ixout:4, ixvar:200}\n"
+                )
+                file.write("EXEC -- using the DLL subroutine\n")
+                file.write("  USE yaluk_f AS yaluk_f\n")
+                file.write("    DATA xdata[1..4]:=[timestep,stoptime,cond,No_Lin]\n")
+                file.write("    INPUT xin[1..2*cond+1]:=[t,Va[1..cond],Vb[1..cond]]\n")
+                file.write("  --    HISTORY histdef(xvar[1]):=0\n")
+                file.write("    OUTPUT 	Vfa[1..cond]:=xout[1..cond]\n")
+                file.write("		Vfb[1..cond]:=xout[cond+1..2*cond]\n")
+                file.write("  ENDUSE\n")
+                file.write("  ENDEXEC\n")
+                file.write("ENDMODEL\n")
+                file.write("MODEL Yaluk3\n")
+                file.write(
+                    " -- This model is link with ATP by means of a iluminated line characteristic method\n"
+                )
+                file.write(
+                    " -- It must have four inputs for one single line (Va,Ia,Vb,Ib)\n"
+                )
+                file.write("CONST\n")
+                file.write("cond {VAL:3} --num. phases\n")
+                file.write("INPUT\n")
+                file.write("  Va[1..cond]\n")
+                file.write("  Vb[1..cond]\n")
+                file.write("VAR Vfa[1..cond],Vfb[1..cond]\n")
+                file.write("OUTPUT\n")
+                file.write("   Vfa,Vfb\n")
+                file.write("DATA\n")
+                file.write("	No_Lin\n")
+                file.write(
+                    "MODEL yaluk_f FOREIGN YALUK_DLL_MODEL {ixdata:4, ixin:7, ixout:6, ixvar:200}\n"
+                )
+                file.write("EXEC -- using the DLL subroutine\n")
+                file.write("  USE yaluk_f AS yaluk_f\n")
+                file.write("    DATA xdata[1..4]:=[timestep,stoptime,cond,No_Lin]\n")
+                file.write("    INPUT xin[1..2*cond+1]:=[t,Va[1..cond],Vb[1..cond]]\n")
+                file.write("  --    HISTORY histdef(xvar[1]):=0\n")
+                file.write("    OUTPUT 	Vfa[1..cond]:=xout[1..cond]\n")
+                file.write("		Vfb[1..cond]:=xout[cond+1..2*cond]\n")
+                file.write("  ENDUSE\n")
+                file.write("  ENDEXEC\n")
+                file.write("ENDMODEL\n")
+                file.write("MODEL Yaluk4\n")
+                file.write(
+                    " -- This model is link with ATP by means of a iluminated line characteristic method\n"
+                )
+                file.write(
+                    " -- It must have four inputs for one single line (Va,Ia,Vb,Ib)\n"
+                )
+                file.write("CONST\n")
+                file.write("cond {VAL:4} --num. phases\n")
+                file.write("INPUT\n")
+                file.write("  Va[1..cond]\n")
+                file.write("  Vb[1..cond]\n")
+                file.write("VAR Vfa[1..cond],Vfb[1..cond]\n")
+                file.write("OUTPUT\n")
+                file.write("   Vfa,Vfb\n")
+                file.write("DATA\n")
+                file.write("	No_Lin\n")
+                file.write(
+                    "MODEL yaluk_f FOREIGN YALUK_DLL_MODEL {ixdata:4, ixin:9, ixout:8, ixvar:200}\n"
+                )
+                file.write("EXEC -- using the DLL subroutine\n")
+                file.write("  USE yaluk_f AS yaluk_f\n")
+                file.write("    DATA xdata[1..4]:=[timestep,stoptime,cond,No_Lin]\n")
+                file.write("    INPUT xin[1..2*cond+1]:=[t,Va[1..cond],Vb[1..cond]]\n")
+                file.write("  --    HISTORY histdef(xvar[1]):=0\n")
+                file.write("    OUTPUT 	Vfa[1..cond]:=xout[1..cond]\n")
+                file.write("		Vfb[1..cond]:=xout[cond+1..2*cond]\n")
+                file.write("  ENDUSE\n")
+                file.write("  ENDEXEC\n")
+                file.write("ENDMODEL\n")
                 # Use models for lines
                 if self.num_lines_FDTD > 0:
                     for Linea in self.Lines:
@@ -516,15 +626,15 @@ class Network(IdentifyObject):
                         # file.write(f"{DevNum:2d}N{Linea.Node_i.idx:04d}{Linea.Phases_connected[i].value}L{Linea.idx:04d}{Linea.Phases_connected[i].value}            {Linea.Configuration.Zc[0,0]:6.1f}
                         #                                                         0\n")
                         file.write(
-                                f"{DevNum}"
-                                f"N{Linea.Node_j.idx:04d}"
-                                f"{Linea.Phases_connected[i].value}"
-                                f"R{Linea.idx:04d}"
-                                f"{Linea.Phases_connected[i].value}"
-                                f"{'':12}"
-                                f"{Linea.Configuration.Zc[i, 0]:06.1f}"
-                                )
-                        
+                            f"{DevNum}"
+                            f"N{Linea.Node_j.idx:04d}"
+                            f"{Linea.Phases_connected[i].value}"
+                            f"R{Linea.idx:04d}"
+                            f"{Linea.Phases_connected[i].value}"
+                            f"{'':12}"
+                            f"{Linea.Configuration.Zc[i, 0]:06.1f}"
+                        )
+
                         for j in range(1, i + 1):
                             test_line = (j + 1) % 3
 
@@ -580,14 +690,14 @@ class Network(IdentifyObject):
                         file.write(f"60R{Linea.idx:04d}{phase.value}{CARD_BODY}")
             # OUTPUT
             file.write("/OUTPUT\n")
-            c_line = ""
+            c_line = "  "
             for Node in self.Nodes:
                 for i in range(Node.Num_conductors):
                     ph = Node.Phases_id[i]
-                    token = f"N{Node.idx:04d}{ph.value}"
+                    token = f"N{Node.idx:04d}{ph}"
                     if len(c_line) + len(token) > max_len:
                         file.write(f"{c_line}\n")
-                        c_line = token
+                        c_line = "  " + token
                     else:
                         c_line += token
             file.write(f"{c_line}\n")

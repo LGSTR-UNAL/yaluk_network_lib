@@ -141,7 +141,7 @@ class Network(IdentifyObject):
         Linea.Node_j = Node_j
         Linea.Configuration = C_type
         if len(Linea.Phases_connected) > 3:
-            for ii in range(3, len(Linea.Phases_connected)):
+            for ii in range(3, len(Linea.Phases_connected) + 1):
                 Linea.Phases_connected[ii] = PhaseName.N
         h = self.Lines.Find(
             lambda L: (
@@ -414,9 +414,7 @@ class Network(IdentifyObject):
                     node = self.Nodes[i]
                     for j in range(node.Num_conductors):
                         ph = node.Phases_id[j]
-                        file.write(
-                            f"M{node.idx:04d}{ph.value}  {{v(N{node.idx:04d}{ph.value})}}\n"
-                        )
+                        file.write(f"M{node.idx:04d}{ph}  {{v(N{node.idx:04d}{ph})}}\n")
                 # Outputs for FDTD
                 if self.num_lines_FDTD > 0:
                     file.write("OUTPUT\n")
@@ -435,40 +433,126 @@ class Network(IdentifyObject):
                     max_conductor = max([n.Num_conductors for n in self.Nodes])
                 except ValueError:
                     max_conductor = 0
-                for j in range(1, max_conductor + 1):
-                    file.write(f"MODEL Yaluk{j}\n")
-                    file.write(
-                        " -- This model is link with ATP by means of a iluminated line characteristic method\n"
-                    )
-                    file.write(
-                        " -- It must have four inputs for one single line (Va,Ia,Vb,Ib)\n"
-                    )
-                    file.write("CONST\n")
-                    file.write(f"cond {{VAL:{j}}} --num. phases\n")
-                    file.write("INPUT\n")
-                    file.write("  Va[1..cond]\n")
-                    file.write("  Vb[1..cond]\n")
-                    file.write("VAR Vfa[1..cond],Vfb[1..cond]\n")
-                    file.write("OUTPUT\n")
-                    file.write("   Vfa,Vfb\n")
-                    file.write("DATA\n")
-                    file.write("    No_Lin\n")
-                    file.write(
-                        "MODEL yaluk_f FOREIGN YALUK_DLL_MODEL {ixdata:4, ixin:3, ixout:2, ixvar:200}\n"
-                    )
-                    file.write("EXEC -- using the DLL subroutine\n")
-                    file.write("  USE yaluk_f AS yaluk_f\n")
-                    file.write(
-                        "    DATA xdata[1..4]:=[timestep,stoptime,cond,No_Lin]\n"
-                    )
-                    file.write(
-                        "    INPUT xin[1..2*cond+1]:=[t,Va[1..cond],Vb[1..cond]]\n"
-                    )
-                    file.write("    OUTPUT Vfa[1..cond]:=xout[1..cond]\n")
-                    file.write("        Vfb[1..cond]:=xout[cond+1..2*cond]\n")
-                    file.write("  ENDUSE\n")
-                    file.write("  ENDEXEC\n")
-                    file.write("ENDMODEL\n")
+
+                file.write("MODEL Yaluk1\n")
+                file.write(
+                    " -- This model is link with ATP by means of a iluminated line characteristic method\n"
+                )
+                file.write(
+                    " -- It must have four inputs for one single line (Va,Ia,Vb,Ib)\n"
+                )
+                file.write("CONST\n")
+                file.write("cond {VAL:1} --num. phases\n")
+                file.write("INPUT\n")
+                file.write("  Va[1..cond]\n")
+                file.write("  Vb[1..cond]\n")
+                file.write("VAR Vfa[1..cond],Vfb[1..cond]\n")
+                file.write("OUTPUT\n")
+                file.write("   Vfa,Vfb\n")
+                file.write("DATA\n")
+                file.write("	No_Lin\n")
+                file.write(
+                    "MODEL yaluk_f FOREIGN YALUK_DLL_MODEL {ixdata:4, ixin:3, ixout:2, ixvar:200}\n"
+                )
+                file.write("EXEC -- using the DLL subroutine\n")
+                file.write("  USE yaluk_f AS yaluk_f\n")
+                file.write("    DATA xdata[1..4]:=[timestep,stoptime,cond,No_Lin]\n")
+                file.write("    INPUT xin[1..2*cond+1]:=[t,Va[1..cond],Vb[1..cond]]\n")
+                file.write("    OUTPUT 	Vfa[1..cond]:=xout[1..cond]\n")
+                file.write("		Vfb[1..cond]:=xout[cond+1..2*cond]\n")
+                file.write("  ENDUSE\n")
+                file.write("  ENDEXEC\n")
+                file.write("ENDMODEL\n")
+                file.write("MODEL Yaluk2\n")
+                file.write(
+                    " -- This model is link with ATP by means of a iluminated line characteristic method\n"
+                )
+                file.write(
+                    " -- It must have four inputs for one single line (Va,Ia,Vb,Ib)\n"
+                )
+                file.write("CONST\n")
+                file.write("cond {VAL:2} --num. phases\n")
+                file.write("INPUT\n")
+                file.write("  Va[1..cond]\n")
+                file.write("  Vb[1..cond]\n")
+                file.write("VAR Vfa[1..cond],Vfb[1..cond]\n")
+                file.write("OUTPUT\n")
+                file.write("   Vfa,Vfb\n")
+                file.write("DATA\n")
+                file.write("	No_Lin\n")
+                file.write(
+                    "MODEL yaluk_f FOREIGN YALUK_DLL_MODEL {ixdata:4, ixin:5, ixout:4, ixvar:200}\n"
+                )
+                file.write("EXEC -- using the DLL subroutine\n")
+                file.write("  USE yaluk_f AS yaluk_f\n")
+                file.write("    DATA xdata[1..4]:=[timestep,stoptime,cond,No_Lin]\n")
+                file.write("    INPUT xin[1..2*cond+1]:=[t,Va[1..cond],Vb[1..cond]]\n")
+                file.write("  --    HISTORY histdef(xvar[1]):=0\n")
+                file.write("    OUTPUT 	Vfa[1..cond]:=xout[1..cond]\n")
+                file.write("		Vfb[1..cond]:=xout[cond+1..2*cond]\n")
+                file.write("  ENDUSE\n")
+                file.write("  ENDEXEC\n")
+                file.write("ENDMODEL\n")
+                file.write("MODEL Yaluk3\n")
+                file.write(
+                    " -- This model is link with ATP by means of a iluminated line characteristic method\n"
+                )
+                file.write(
+                    " -- It must have four inputs for one single line (Va,Ia,Vb,Ib)\n"
+                )
+                file.write("CONST\n")
+                file.write("cond {VAL:3} --num. phases\n")
+                file.write("INPUT\n")
+                file.write("  Va[1..cond]\n")
+                file.write("  Vb[1..cond]\n")
+                file.write("VAR Vfa[1..cond],Vfb[1..cond]\n")
+                file.write("OUTPUT\n")
+                file.write("   Vfa,Vfb\n")
+                file.write("DATA\n")
+                file.write("	No_Lin\n")
+                file.write(
+                    "MODEL yaluk_f FOREIGN YALUK_DLL_MODEL {ixdata:4, ixin:7, ixout:6, ixvar:200}\n"
+                )
+                file.write("EXEC -- using the DLL subroutine\n")
+                file.write("  USE yaluk_f AS yaluk_f\n")
+                file.write("    DATA xdata[1..4]:=[timestep,stoptime,cond,No_Lin]\n")
+                file.write("    INPUT xin[1..2*cond+1]:=[t,Va[1..cond],Vb[1..cond]]\n")
+                file.write("  --    HISTORY histdef(xvar[1]):=0\n")
+                file.write("    OUTPUT 	Vfa[1..cond]:=xout[1..cond]\n")
+                file.write("		Vfb[1..cond]:=xout[cond+1..2*cond]\n")
+                file.write("  ENDUSE\n")
+                file.write("  ENDEXEC\n")
+                file.write("ENDMODEL\n")
+                file.write("MODEL Yaluk4\n")
+                file.write(
+                    " -- This model is link with ATP by means of a iluminated line characteristic method\n"
+                )
+                file.write(
+                    " -- It must have four inputs for one single line (Va,Ia,Vb,Ib)\n"
+                )
+                file.write("CONST\n")
+                file.write("cond {VAL:4} --num. phases\n")
+                file.write("INPUT\n")
+                file.write("  Va[1..cond]\n")
+                file.write("  Vb[1..cond]\n")
+                file.write("VAR Vfa[1..cond],Vfb[1..cond]\n")
+                file.write("OUTPUT\n")
+                file.write("   Vfa,Vfb\n")
+                file.write("DATA\n")
+                file.write("	No_Lin\n")
+                file.write(
+                    "MODEL yaluk_f FOREIGN YALUK_DLL_MODEL {ixdata:4, ixin:9, ixout:8, ixvar:200}\n"
+                )
+                file.write("EXEC -- using the DLL subroutine\n")
+                file.write("  USE yaluk_f AS yaluk_f\n")
+                file.write("    DATA xdata[1..4]:=[timestep,stoptime,cond,No_Lin]\n")
+                file.write("    INPUT xin[1..2*cond+1]:=[t,Va[1..cond],Vb[1..cond]]\n")
+                file.write("  --    HISTORY histdef(xvar[1]):=0\n")
+                file.write("    OUTPUT 	Vfa[1..cond]:=xout[1..cond]\n")
+                file.write("		Vfb[1..cond]:=xout[cond+1..2*cond]\n")
+                file.write("  ENDUSE\n")
+                file.write("  ENDEXEC\n")
+                file.write("ENDMODEL\n")
                 # Use models for lines
                 if self.num_lines_FDTD > 0:
                     for Linea in self.Lines:
@@ -606,14 +690,14 @@ class Network(IdentifyObject):
                         file.write(f"60R{Linea.idx:04d}{phase.value}{CARD_BODY}")
             # OUTPUT
             file.write("/OUTPUT\n")
-            c_line = ""
+            c_line = "  "
             for Node in self.Nodes:
                 for i in range(Node.Num_conductors):
                     ph = Node.Phases_id[i]
-                    token = f"N{Node.idx:04d}{ph.value}"
+                    token = f"N{Node.idx:04d}{ph}"
                     if len(c_line) + len(token) > max_len:
                         file.write(f"{c_line}\n")
-                        c_line = token
+                        c_line = "  " + token
                     else:
                         c_line += token
             file.write(f"{c_line}\n")

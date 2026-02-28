@@ -758,6 +758,9 @@ class Network(IdentifyObject):
             file.write("BLANK\n")
 
     def Save(self, path: str):
+        self.create_Dataframes()
+        self.df_nodes.to_csv(f"{path}{self.name}_nodes.csv", index=False)
+        self.df_lines.to_csv(f"{path}{self.name}_lines.csv", index=False)
         filename = f"{path}{self.name}.stcx"
         with open(filename, "w", encoding="utf-8") as f:
             f.write(f"Network: {self.name}\n")
@@ -796,9 +799,47 @@ class Network(IdentifyObject):
                 Vrusck = 1.2958 * 30 * Imax / 1e3 * hm/ distance
                 self.Vrusck_max = max(self.Vrusck_max, Vrusck)
                 self.min_distance = min(self.min_distance, distance)
-        
-            
-
-            
+   
         return self.direct_strike, self.Vrusck_max, self.min_distance, line_name
+    def create_dataframes(self):
+        import pandas as pd
+        self.df_nodes = pd.DataFrame(
+            {
+                "Node_id": [node.id for node in self.Nodes],
+                "Node_idx": [node.idx for node in self.Nodes],
+                "Name": [node.name for node in self.Nodes],
+                "X": [node.Location_X for node in self.Nodes],
+                "Y": [node.Location_Y for node in self.Nodes],
+                "Phases": [node.Phases_id for node in self.Nodes],
+                "transformers": [node.Transformers for node in self.Nodes],
+                "surge_arresters": [node.SurgeArresters for node in self.Nodes],
+                "lat": [node.GeoLocation.Lat for node in self.Nodes],
+                "long": [node.GeoLocation.Lng  for node in self.Nodes],
+            }
+        )
+        self.df_lines = pd.DataFrame(
+            {
+                "Line_id": [line.id for line in self.Lines],
+                "Line_idx": [line.idx for line in self.Lines],
+                "name": [line.name for line in self.Lines],
+                "Node_i": [line.Node_i.name for line in self.Lines],
+                "Node_j": [line.Node_j.name for line in self.Lines],
+                "Xi": [line.Node_i.Location_X for line in self.Lines],
+                "Yi": [line.Node_i.Location_Y for line in self.Lines],
+                "Xj": [line.Node_j.Location_X for line in self.Lines],
+                "Yj": [line.Node_j.Location_Y for line in self.Lines],
+                "lat_i": [line.Node_i.GeoLocation.Lat for line in self.Lines],
+                "long_i": [line.Node_i.GeoLocation.Lng for line in self.Lines],
+                "lat_j": [line.Node_j.GeoLocation.Lat for line in self.Lines],
+                "long_j": [line.Node_j.GeoLocation.Lng for line in self.Lines],
+                "hmax": [line.Configuration.get_max_height() for line in self.Lines],
+                "FTD": [line.isFDTD for line in self.Lines],
+                "direct_strike":[line.isDirectStrike for line in self.Lines],
+                "Num_conductors": [
+                    line.Configuration.Num_conductors for line in self.Lines
+                ],
+                "Length": [line.length for line in self.Lines],
+            }
+        )
+    
 

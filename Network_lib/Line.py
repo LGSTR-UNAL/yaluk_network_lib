@@ -2,9 +2,9 @@ from typing import Optional, List
 from .Node import PhaseName, Node, PointLatLng
 from .Configuration_Type import Configuration_Type
 import numpy as np
+from .IdentifiedObject import IdentifyObject
 
-
-class Line:
+class Line(IdentifyObject):
     def __init__(
         self,
         N_i: Optional[Node] = None,

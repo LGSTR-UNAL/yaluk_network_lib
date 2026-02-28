@@ -5,6 +5,8 @@ from typing import List
 
 from scipy.stats import lognorm
 
+from Network_lib.GeoTransform import PointLatLng, PointXY
+
 from .Lightning import Lightning
 from .Lightning import Current_Waveform
 from Network_lib.Network import Network
@@ -19,13 +21,15 @@ class Lightning_stat:
     def __init__(self, net: Network, num_events=100,M: str='ProbDistribution',dist=1000):
 
         self.Model: StatI_ModelType = M
-
+        
         # Spatial boundaries
         self.Xmin: float = net.xmin-dist
         self.Xmax: float = net.xmax+dist
         self.Ymin: float = net.ymin-dist
         self.Ymax: float = net.ymax+dist
-
+        self.initlocation = PointLatLng(net.InitLatLong.Lat, net.InitLatLong.Lng)
+        self.x_init, self.y_init = net.InitXY.X, net.InitXY.Y
+        self.initXY = PointXY(self.x_init, self.y_init)
         # Statistics
         self.Num_events: int = num_events
 
@@ -55,6 +59,7 @@ class Lightning_stat:
     # ---------------------------------------------------------
     # Statistical lightning generation
     # ---------------------------------------------------------
+   
     def GenStatCurrents(self) -> int:
 
         rng = random.Random()
@@ -72,7 +77,8 @@ class Lightning_stat:
         for _ in range(self.Num_events):
 
             Li = Lightning()
-
+            Li.initXY = self.initXY
+            Li.initlocation = self.initlocation
             Xrnd = rng.random()
             Ix = Ix1.ppf(Xrnd)
 
@@ -145,7 +151,7 @@ class Lightning_stat:
         with open(filename, "w") as file:
             file.write(
                 "Case;Ih1;Ih2;tao11;tao21;tao12;tao22;n1;n2;"
-                "X0;Y0;direc_strike;min_dist;Line_id;Rusck_maxV\n"
+                "X0;Y0;direct_strike;min_dist;Line_id;Rusck_maxV\n"
             )
 
             sim_all = Vr <= 0
@@ -169,5 +175,30 @@ class Lightning_stat:
     def check_direct_strike(self,net:Network):
         for L in self.Lightnings:
             L.direc_strike, L.Rusck_max_voltage, L.min_dist, L.line_id_nearest = net.check_direct_strike(L.X_location, L.Y_location, L.Ih1)
+    def create_dataframe(self):
+        import pandas as pd
+        data = []
+        for L in self.Lightnings:
+            data.append({
+                "Ih1": L.Ih1,
+                "Ih2": L.Ih2,
+                "tao11": L.tf1,
+                "tao21": L.tc1,
+                "tao12": L.tf2,
+                "tao22": L.tc2,
+                "n1": L.n1,
+                "n2": L.n2,
+                "X0": L.X_location,
+                "Y0": L.Y_location,
+                "direct_strike": int(L.direc_strike),
+                "min_dist": L.min_dist,
+                "line_id_nearest": L.line_id_nearest,
+                "Rusck_max_voltage": L.Rusck_max_voltage,
+                "Lat": L.GeoLocation.Lat,
+                "Lng": L.GeoLocation.Lng
+            })
+            self.lightnings_df = pd.DataFrame(data)
+        return self.lightnings_df
+
             
             

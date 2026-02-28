@@ -5,9 +5,46 @@ class SurgeArrester(Element_id):
         super().__init__(); self.Ni=N; self.pch_file_name=filename; self.Phases_connected=[]
         if filename and N: self._populate_phases_from_int(Phase_connection)
     def _populate_phases_from_int(self, pc:int):
-        if pc==100: self.Phases_connected.append(PhaseName.A)
-        if pc==10: self.Phases_connected.append(PhaseName.B)
-        if pc==1: self.Phases_connected.append(PhaseName.C)
+        match pc:
+                case 100:
+                        self.Phases_connected.append(PhaseName.A)
+                case 10:
+                        self.Phases_connected.append(PhaseName.B)
+                case 1:
+                        self.Phases_connected.append(PhaseName.C)
+                case 110:
+                        self.Phases_connected.append(PhaseName.A)
+                        self.Phases_connected.append(PhaseName.B)
+                case 11:
+                        self.Phases_connected.append(PhaseName.B)
+                        self.Phases_connected.append(PhaseName.C)
+                case 101:
+                        self.Phases_connected.append(PhaseName.A)
+                        self.Phases_connected.append(PhaseName.C)
+                case 111:
+                        self.Phases_connected.append(PhaseName.A)
+                        self.Phases_connected.append(PhaseName.B)
+                        self.Phases_connected.append(PhaseName.C)
+                case 000:
+                        # It must be implemented an error message
+                        pass
+
     def write_atp_file(self, file):
+        max_len = 80
         if not self.pch_file_name: return
-        file.write(f"INCLUDE {self.pch_file_name} FOR {self.Ni.id}\n")
+        current_line = ""
+        token = f"$INCLUDE, {self.pch_file_name}"
+        current_line += token
+        phases=self.Phases_connected
+        phases.append(PhaseName.N)
+        for ph in phases:
+            token = f"N{self.Ni.idx:04d}{ph.value}"
+            if len(current_line) + len(token) > (max_len - 3):
+                current_line += ","
+                current_line = current_line.ljust(78) + "$$\n"
+                file.write(current_line)
+                current_line = "  " + token
+            else:
+                current_line += "," + token
+        
+        file.write(current_line + "\n")

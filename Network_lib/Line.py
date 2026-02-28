@@ -52,16 +52,18 @@ class Line:
             if self.Node_j and ph.value not in self.Node_j.Phases_id:
                 self.Node_j.Phases_id.append(ph.value)
 
-    def Dist2line(self, point: PointLatLng) -> float:
+    def Dist2line(self, X0,Y0) -> float:
         # Placeholder for distance calculation from a point to the line
         XA0 = self.Node_i.Location_X
         YA0 = self.Node_i.Location_Y
         XB0 = self.Node_j.Location_X
         YB0 = self.Node_j.Location_Y
         self.Node_j.initlocation.Lng
-        EARTH_RADIUS = 6_371_000.0
-        X0 = (point.Lng - self.Node_j.initlocation.Lng) / 180 * np.pi * EARTH_RADIUS
-        Y0 = (point.Lat - self.Node_j.initlocation.Lat) / 180 * np.pi * EARTH_RADIUS
+        
+        #EARTH_RADIUS = 6_371_000.0
+        #X0 = (point.Lng - self.Node_j.initlocation.Lng) / 180 * np.pi * EARTH_RADIUS
+        #Y0 = (point.Lat - self.Node_j.initlocation.Lat) / 180 * np.pi * EARTH_RADIUS
+
         # -------------------------------
         # Vertical line
         # -------------------------------
@@ -72,6 +74,7 @@ class Line:
 
             if (yc - YA0) * (yc - YB0) < 0:
                 DISTANCIA = abs(X0 - XA0)
+                closest_node = self.Node_i if abs(Y0 - YA0) < abs(Y0 - YB0) else self.Node_j #check which node is closer in the vertical direction
             else:
                 d1 = np.hypot(XA0 - X0, YA0 - Y0)
                 d2 = np.hypot(XB0 - X0, YB0 - Y0)
@@ -91,6 +94,7 @@ class Line:
 
             if (xc - XA0) * (xc - XB0) < 0:
                 DISTANCIA = abs(Y0 - YA0)
+                closest_node = self.Node_i if abs(X0 - XA0) < abs(X0 - XB0) else self.Node_j #check which node is closer in the horizontal direction
             else:
                 d1 = np.hypot(XA0 - X0, YA0 - Y0)
                 d2 = np.hypot(XB0 - X0, YB0 - Y0)
@@ -115,6 +119,7 @@ class Line:
 
             if (xc - XA0) * (xc - XB0) < 0:
                 DISTANCIA = np.hypot(xc - X0, yc - Y0)
+                closest_node = self.Node_i if abs(X0 - XA0) < abs(X0 - XB0) else self.Node_j   # The closest point is on the line segment, so no specific node is closer
             else:
                 d1 = np.hypot(XA0 - X0, YA0 - Y0)
                 d2 = np.hypot(XB0 - X0, YB0 - Y0)
@@ -127,34 +132,33 @@ class Line:
         # -------------------------------
         # Distance threshold logic
         # -------------------------------
-        return DISTANCIA
+        return DISTANCIA, closest_node
 
-    def check_point_proximity(self, point: PointLatLng, threshold: float) -> bool:
-        distance = self.Dist2line(point)
+    def check_point_proximity(self, X,Y, threshold: float) -> bool:
+        distance = self.Dist2line(X,Y)
         if distance <= threshold:
             self.isFDTD = True
         else:
             self.isFDTD = False
         return self.isFDTD
 
-    def check_direct_strike(self, point: PointLatLng, Imax: float) -> bool:
+    def check_direct_strike(self, X:float, Y:float, I: float) -> bool:
+        Imax = I/1e3  # Convert to kA
         Rs = 10 * Imax**0.65
         Rg = 0.9 * Rs
-        hmax = 0
-        for cond in self.Configuration.Conductors:
-            if hmax < cond.Height:
-                hmax = cond.Height
+        hmax = self.Configuration.get_max_height() if self.Configuration else 0.0
+        
         if Rg > hmax:
             threshold = np.hypot(Rs, Rg - hmax)
         else:
             threshold = Rs
-        distance = self.Dist2line(point)
+        distance, closest_node = self.Dist2line(X,Y)
         if distance <= threshold:
             self.isDirectStrike = True
-            self.Node_i.Directstrike = True
+            closest_node.Directstrike = True
             self.isFDTD = False
         else:
             self.isDirectStrike = False
             self.Node_i.Directstrike = False
-            self.Nodej.Directstrike = False
-        return self.isFDTD
+            self.Node_j.Directstrike = False
+        return self.isDirectStrike, distance

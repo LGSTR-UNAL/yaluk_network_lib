@@ -7,6 +7,7 @@ from scipy.stats import lognorm
 
 from .Lightning import Lightning
 from .Lightning import Current_Waveform
+from Network_lib.Network import Network
 
 
 class StatI_ModelType(Enum):
@@ -15,18 +16,18 @@ class StatI_ModelType(Enum):
 
 
 class Lightning_stat:
-    def __init__(self, M: StatI_ModelType = StatI_ModelType.ProbDistribution):
+    def __init__(self, net: Network, num_events=100,M: str='ProbDistribution',dist=1000):
 
         self.Model: StatI_ModelType = M
 
         # Spatial boundaries
-        self.Xmin: float = -1000
-        self.Xmax: float = 2000
-        self.Ymin: float = -1000
-        self.Ymax: float = 1000
+        self.Xmin: float = net.xmin-dist
+        self.Xmax: float = net.xmax+dist
+        self.Ymin: float = net.ymin-dist
+        self.Ymax: float = net.ymax+dist
 
         # Statistics
-        self.Num_events: int = 1
+        self.Num_events: int = num_events
 
         self.Mean_Ip_1: float = 61
         self.Mean_Ip_2: float = 33.3
@@ -45,9 +46,9 @@ class Lightning_stat:
 
         # Lightning database
         self.Lightnings: List[Lightning] = []
-
-        if M == StatI_ModelType.Database:
-            self.Lightnings = []
+        if M == 'ProbDistribution':
+            self.GenStatCurrents()
+            self.check_direct_strike(net)
         else:
             self.Lightnings = []
 
@@ -152,14 +153,11 @@ class Lightning_stat:
 
             for L in self.Lightnings:
 
-                if (
-                    L.Rusck_max_voltage > Vr
-                    and (not L.direc_strike or sim_all)
-                ):
-                    file.write(
-                        f"{i};{L.Ih1:0.00E};{L.Ih2:0.00E};"
-                        f"{L.tf1:0.00E};{L.tc1:0.00E};"
-                        f"{L.tf2:0.00E};{L.tc2:0.00E};"
+                
+                file.write(
+                        f"{i};{L.Ih1:0.00000E};{L.Ih2:0.00000E};"
+                        f"{L.tf1:0.00000E};{L.tc1:0.00000E};"
+                        f"{L.tf2:0.00000E};{L.tc2:0.00000E};"
                         f"{L.n1};{L.n2};"
                         f"{L.X_location};{L.Y_location};"
                         f"{int(L.direc_strike)};"
@@ -168,3 +166,8 @@ class Lightning_stat:
                     )
 
                 i += 1
+    def check_direct_strike(self,net:Network):
+        for L in self.Lightnings:
+            L.direc_strike, L.Rusck_max_voltage, L.min_dist, L.line_id_nearest = net.check_direct_strike(L.X_location, L.Y_location, L.Ih1)
+            
+            

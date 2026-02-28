@@ -1,5 +1,6 @@
 import Network_lib as nl
 import pandas as pd
+import Lightning_lib.Lightning_stat as lightning_stat
 
 from Network_lib.Node import PhaseName
 class Trf_parameters():
@@ -64,6 +65,7 @@ def network_setting(Nodes: pd.DataFrame, Lines:pd.DataFrame, Transformers:pd.Dat
     initxy=nl.PointXY(Nodes.loc[0,'x'], Nodes.loc[0,'y'])
  
     net = nl.Network('uid_01','Example_Network')
+    net2= nl.Network()
     net.InitXY=initxy
     
     Conductor_1 = nl.Conductor()
@@ -87,8 +89,8 @@ def network_setting(Nodes: pd.DataFrame, Lines:pd.DataFrame, Transformers:pd.Dat
        net.AddNode(n.x, n.y,Nodeidx=n.id,ctype="abs")  #You can use also ctype="rel" if you want to add nodes using coordinates relative to the initial location
     # Add lines
     for l in Lines.itertuples():
-        from_node = net.Nodes.GetByIdx(l.from_node)
-        to_node = net.Nodes.GetByIdx(l.to_node)
+        from_node = net.Nodes.GetByName(l.from_node)
+        to_node = net.Nodes.GetByName(l.to_node)
         net.AddLine(from_node, to_node, Config1)
     for li in net.Lines:
         li.isFDTD=True
@@ -110,6 +112,23 @@ if __name__ == "__main__":
     print("Data setting completed.")
     print("Creating network...")
     net=network_setting(Nodes,Lines,Transformers,Surge_Arresters,Trftype)
+    
+    num_events=2000
+    lig_stat=lightning_stat.LightningStat(net,num_events,'ProbDistribution')
+    
+    lig_stat.Create_csvDB("lightning_database.csv")
+    
+
+            #     Project.LightStat.Xmax = Xmax-xinit;
+            # Project.LightStat.Ymax = Ymax-yinit;
+            # Project.LightStat.Ymin = Ymin-yinit;
+            # Project.LightStat.Xmin = Xmin - xinit;
+            # Project.LightStat.Model = StatI_ModelType.ProbDistribution;
+            # Project.LightStat.GenStatCurrents();
+            # Project.Compute_directstrikes();
+            # Project.LightStat.Create_csvDB(Project.GenSettings.path + Project.GenSettings.Project_name + "_all.csv");
+            # Project.LightStat.Create_csvDB(Project.GenSettings.path + Project.GenSettings.Project_name + ".csv",60);
+            # Project.SetCurrentLightning(Project.LightStat.Lightnings[0]);
     print("Network created successfully.")
     print("Generating ATP file...")
     

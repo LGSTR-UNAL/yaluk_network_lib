@@ -1,12 +1,17 @@
 
 from matplotlib.collections import LineCollection
 import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
 
 def plot_nodes(df_nodes,
             value_col=None,
             coord_type="cartesian",
             cmap="viridis",
-            node_size=40,
+            node_size=20,
+            show_labels=False,
+            label_offset=(2,2),
+            font_size=8,
             ax=None):
 
     if ax is None:
@@ -27,15 +32,29 @@ def plot_nodes(df_nodes,
         sc = ax.scatter(df_nodes[x_col],
                         df_nodes[y_col],
                         s=node_size,
-                        color="black")
+                        color="black",
+                        zorder=3)
     else:
         sc = ax.scatter(df_nodes[x_col],
                         df_nodes[y_col],
                         c=df_nodes[value_col],
                         cmap=cmap,
-                        s=node_size)
+                        s=node_size,
+                        zorder=3)
 
         fig.colorbar(sc, ax=ax).set_label(value_col)
+    if show_labels:
+        dx, dy = label_offset
+
+        for _, row in df_nodes.iterrows():
+            ax.text(
+                row[x_col] + dx,
+                row[y_col] + dy,
+                row["Name"],
+                fontsize=font_size,
+                color="black",
+                alpha=0.8
+            )
 
     ax.set_aspect("equal")
 
@@ -46,7 +65,7 @@ def plot_lines(df_lines,
             value_col=None,
             coord_type="cartesian",
             cmap="plasma",
-            linewidth=1.5,
+            linewidth=2.5,
             ax=None):
 
     if ax is None:

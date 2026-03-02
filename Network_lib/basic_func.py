@@ -37,6 +37,7 @@ def lineparam(Xi, hm, rc):
             s = sqrt((hm[i] - hm[j])**2 + (Xi[i] - Xi[j])**2)
             if i == j:
                 Lm[i, i] = mu / (2 * pi) * log(2 * hm[i] / rc[i])
+                
             else:
                 Lm[i, j] = mu / (4 * pi) * log(1 + 4 * hm[i] * hm[j] / s**2)
 

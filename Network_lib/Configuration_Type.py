@@ -13,9 +13,11 @@ class Configuration_Type:
         Xi=[0.0]*cond; hm=[0.0]*cond; rc=[0.0]*cond
         for j, conductor in enumerate(self.Conductors._list):
             hm[j]=conductor.Height; Xi[j]=conductor.Relative_X_location; rc[j]=conductor.Conduct.Radio
-            self.Lm, self.Cm, self.Zc = lineparam(Xi, hm, rc)
+        self.Lm, self.Cm, self.Zc = lineparam(Xi, hm, rc)
         return 
     def Add_conductor(self, C: Conductor, Height: float, X_pos: float = 0.0):
         cp = ConductorPosition(); cp.Conduct=C; cp.Height=Height; cp.Relative_X_location=X_pos
         cp.id = len(self.Conductors._list)+1
         self.Conductors.Add(cp)
+    def get_max_height(self):
+        return max([c.Height for c in self.Conductors._list]) if self.Num_conductors>0 else 0.0

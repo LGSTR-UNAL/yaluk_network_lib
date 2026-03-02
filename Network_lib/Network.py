@@ -15,28 +15,15 @@ from .Transformer import Transformer
 from .SurgeArrester import SurgeArrester
 from .Line import Line
 from .IdentifiedObject import IdentifyObject
-from .LCC_cards import branch_card_lcc, conductor_card_lcc
+from .LCC_cards import branch_card_lcc, conductor_card_lcc, arg_card_lcc
 from .GeoTransform import CoordTransf, PointLatLng, PointXY
 from dataclasses import dataclass, field
 from datetime import date
+from .utils import get_short_path
 
 
 @dataclass
 class Network(IdentifyObject):
-    InitLatLong: PointLatLng = field(
-        default_factory=lambda: PointLatLng(6.1924, -75.3979)
-    )
-    InitXY: PointXY = field(default_factory=lambda: PointXY(0.0, 0.0))
-    Tmax: float = 30e-6
-    Dt: float = 2e-8
-    Dx: float = 10.0
-    Dmax_induction: float = 0.0
-    num_lines_FDTD: int = 0
-    Lines: LineCollection = field(default_factory=LineCollection)
-    Nodes: NodeCollection = field(default_factory=NodeCollection)
-    Transformers: TrfCollection = field(default_factory=TrfCollection)
-    Shunt_elements: List[IShunt_element] = field(default_factory=list)
-    SurgeArresters: List[SurgeArrester] = field(default_factory=list)
 
     class output:
         def __init__(self, error=False, id_str="", index=0):
@@ -44,7 +31,12 @@ class Network(IdentifyObject):
             self.id = id_str
             self.index = index
 
-    def Init(self):
+    def __init__(self, uid=None, name=None):
+        super().__init__()
+        print("Initializing network...")
+        self.uid = uid if uid is not None else ""        
+        self.name = name if name is not None else ""
+        self.InitLatLong = PointLatLng(6.1924, -75.3979)
         geo_transform = CoordTransf()
         x, y = geo_transform.to_projected(self.InitLatLong.Lat, self.InitLatLong.Lng)
         self.InitXY = PointXY(x, y)
@@ -56,7 +48,26 @@ class Network(IdentifyObject):
         self.Tmax = 30e-6
         self.Dt = 2e-8
         self.Dx = 10.0
+        self.Dmax_induction=0.0
+        self.xmax=None
+        self.ymax=None
+        self.xmin=None
+        self.ymin=None
+        self.num_lines_FDTD = 0
+        self.direct_strike = False # Flag to indicate if the network is affected by a direct strike
+        self.line_ds=None  # ID of the line with direct strike, if any
+        self.Vrusck_max = 0.0 # [m] Maximum Rusck voltage calculated for the network based on the distance to the lines and the maximum current
+        self.min_distance=1e15 # [m] Minimum distance from the strike point to the lines in the network
 
+    def update_limits(self, x,y):
+        if self.xmax is None or x > self.xmax:
+            self.xmax = x
+        if self.xmin is None or x < self.xmin:
+            self.xmin = x
+        if self.ymax is None or y > self.ymax:
+            self.ymax = y
+        if self.ymin is None or y < self.ymin:
+            self.ymin = y
     def AddNode(self, X, Y, Nodeidx=None, ctype="rel", label=None):
         """Add a node to the network at coordinates (X,Y) in meters from the initial location.
         If Nodeidx is provided, it will be used as the index for the new node (max 4 characters).
@@ -87,6 +98,7 @@ class Network(IdentifyObject):
             else:
                 newNode.Location_X = X
                 newNode.Location_Y = Y
+            self.update_limits(newNode.Location_X, newNode.Location_Y) # Update network limits based on new node coordinates
             # if newNode.GeoLocation is None:
             #    newNode.XY_2_LatLng(self.InitLatLong)
             if Nodeidx is None:
@@ -128,6 +140,7 @@ class Network(IdentifyObject):
             newNode.Location_Y = Node_connection.Location_Y
             newNode.Description = " Low Voltage Node for using with transformer"
             newNode.idx = len(self.Nodes) + 1
+            newNode.name = Node_connection.name + "_BT" if Node_connection.name else newNode.id
             # newNode.XY_2_LatLng(self.InitLatLong)
             newNode.id = id_name
             self.Nodes.Add(newNode)
@@ -209,9 +222,11 @@ class Network(IdentifyObject):
 
     def AddTransf(self, label, CHV, CLV, CHL, ground, NHV, phases):
         if isinstance(NHV, int):
-            NHV = self.Nodes.GetByIdx(NHV)
+            NHV = self.Nodes.GetByName(NHV)
+            if NHV is None:
+                raise ValueError(f"Node with id {NHV} not found in the network")
         elif isinstance(NHV, str):
-            NHV = self.Nodes.Find(lambda n: n.id == NHV)
+            NHV = self.Nodes.GetByName(NHV)
         elif isinstance(NHV, Node):
             pass
         else:
@@ -293,9 +308,6 @@ class Network(IdentifyObject):
             filename = Path(ruta) / fname
             filename.parent.mkdir(parents=True, exist_ok=True)
             with open(filename, "w", encoding="utf-8") as file:
-                file.write(f"Line {i+1}\n")
-
-                with open(filename, "w", encoding="utf-8") as file:
                     file.write("BEGIN NEW DATA CASE\n")
                     file.write(
                         "C --------------------------------------------------------\n"
@@ -314,6 +326,7 @@ class Network(IdentifyObject):
                             line.Configuration.Num_conductors, max_len=80
                         ).__str__()
                     )
+                    file.write('LINE CONSTANTS\n')
                     file.write("METRIC\n")
                     for k in range(line.Configuration.Num_conductors):
                         cp = line.Configuration.Conductors._list[k]
@@ -336,6 +349,39 @@ class Network(IdentifyObject):
                     file.write("BLANK CARD ENDING JMARTI SETUP\n")
                     file.write("BEGIN NEW DATA CASE\n")
                     file.write("BLANK CARD\n")
+            p = Path("case1.ecf")
+
+            #filename = get_short_path(str(filename.resolve()))
+            filename_dbm=str(filename).replace(".dat",".dbm")
+            filename_pch = filename_dbm.replace(".dbm", ".pch")
+            filename_lib = filename_dbm.replace(".dbm", ".lib")
+            print(f"Short path: {filename_lib}")
+            import os
+
+            if os.name == "nt":
+                print("Running on Windows")
+
+            with open(filename_dbm, "w", encoding="utf-8") as file:
+                    file.write("BEGIN NEW DATA CASE --NOSORT--\n")
+                    file.write("C --------------------------------------------------------\n")
+                    file.write(
+                        f"C -LCC punch File for line: {line.id} in network: {self.name}\n"
+                    )
+                    file.write(f"C Date: {today}\n")
+                    file.write("C Generated by YALUK DRAW 2.0\n")
+                    file.write(
+                        f"C --------------------------------------------------------\n"
+                    )
+                    file.write("DATA BASE MODULE\n")
+                    file.write("$ERASE\n")
+                    file.write(arg_card_lcc(line.Configuration.Num_conductors, max_len=80).__str__())
+                    file.write(f"$INCLUDE, {filename_pch}\n")
+                    file.write("BEGIN NEW DATA CASE\n")
+                    file.write(f"$PUNCH, {filename_lib}\n")
+                    file.write("BEGIN NEW DATA CASE\n")
+                    file.write("BLANK\n")
+                    file.write("BLANK\n")
+
 
     def MakeAtpFile(
         self,
@@ -712,6 +758,9 @@ class Network(IdentifyObject):
             file.write("BLANK\n")
 
     def Save(self, path: str):
+        self.create_Dataframes()
+        self.df_nodes.to_csv(f"{path}{self.name}_nodes.csv", index=False)
+        self.df_lines.to_csv(f"{path}{self.name}_lines.csv", index=False)
         filename = f"{path}{self.name}.stcx"
         with open(filename, "w", encoding="utf-8") as f:
             f.write(f"Network: {self.name}\n")
@@ -730,3 +779,67 @@ class Network(IdentifyObject):
                 self.nme = line.split("Network: ", 1)[1]
             if line.startswith("Description: "):
                 self.Description = line.split("Description: ", 1)[1]
+    def check_direct_strike(self,X,Y,Imax):
+        self.direct_strike = False
+        self.line_ds=None
+        line_name=None
+        self.Vrusck_max=0
+        self.min_distance =9999999
+        for line in self.Lines:
+            ds, distance = line.check_direct_strike(X,Y,Imax)
+            if ds:
+                self.direct_strike = True
+                self.line_ds= line
+                line_name = line.id
+                self.Vrusck_max=0
+                self.min_distance =0
+                return self.direct_strike, self.Vrusck_max, self.min_distance, line_name
+            else:
+                hm=line.Configuration.get_max_height()
+                Vrusck = 1.2958 * 30 * Imax / 1e3 * hm/ distance
+                self.Vrusck_max = max(self.Vrusck_max, Vrusck)
+                self.min_distance = min(self.min_distance, distance)
+   
+        return self.direct_strike, self.Vrusck_max, self.min_distance, line_name
+    def create_dataframes(self):
+        import pandas as pd
+        self.df_nodes = pd.DataFrame(
+            {
+                "Node_id": [node.id for node in self.Nodes],
+                "Node_idx": [node.idx for node in self.Nodes],
+                "Name": [node.name for node in self.Nodes],
+                "X": [node.Location_X for node in self.Nodes],
+                "Y": [node.Location_Y for node in self.Nodes],
+                "Phases": [node.Phases_id for node in self.Nodes],
+                "transformers": [node.Transformers for node in self.Nodes],
+                "surge_arresters": [node.SurgeArresters for node in self.Nodes],
+                "lat": [node.GeoLocation.Lat for node in self.Nodes],
+                "long": [node.GeoLocation.Lng  for node in self.Nodes],
+            }
+        )
+        self.df_lines = pd.DataFrame(
+            {
+                "Line_id": [line.id for line in self.Lines],
+                "Line_idx": [line.idx for line in self.Lines],
+                "name": [line.name for line in self.Lines],
+                "Node_i": [line.Node_i.name for line in self.Lines],
+                "Node_j": [line.Node_j.name for line in self.Lines],
+                "Xi": [line.Node_i.Location_X for line in self.Lines],
+                "Yi": [line.Node_i.Location_Y for line in self.Lines],
+                "Xj": [line.Node_j.Location_X for line in self.Lines],
+                "Yj": [line.Node_j.Location_Y for line in self.Lines],
+                "lat_i": [line.Node_i.GeoLocation.Lat for line in self.Lines],
+                "long_i": [line.Node_i.GeoLocation.Lng for line in self.Lines],
+                "lat_j": [line.Node_j.GeoLocation.Lat for line in self.Lines],
+                "long_j": [line.Node_j.GeoLocation.Lng for line in self.Lines],
+                "hmax": [line.Configuration.get_max_height() for line in self.Lines],
+                "FTD": [line.isFDTD for line in self.Lines],
+                "direct_strike":[line.isDirectStrike for line in self.Lines],
+                "Num_conductors": [
+                    line.Configuration.Num_conductors for line in self.Lines
+                ],
+                "Length": [line.length for line in self.Lines],
+            }
+        )
+    
+

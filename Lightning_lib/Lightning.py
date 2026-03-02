@@ -1,6 +1,6 @@
 from enum import Enum
 import os
-
+from Network_lib.GeoTransform import PointLatLng, PointXY, CoordTransf
 
 class Current_Waveform(Enum):
     Heidler = 0
@@ -10,9 +10,12 @@ class Current_Waveform(Enum):
 class Lightning:
     def __init__(self):
         # Location
-        self.X_location: float = 0.0
-        self.Y_location: float = 0.0
-
+        self.geo_transformer = CoordTransf()
+        self.Location_x: float = 0.0
+        self.Location_y: float = 0.0
+        self.initlocation = PointLatLng()
+        self.GeoLocation= PointLatLng()
+        self.initXY = PointXY()
         # Current parameters
         self.Magnitude: float = 0.0
         self.Front_time: float = 0.0
@@ -36,7 +39,38 @@ class Lightning:
         self.line_id_nearest: int = 0
         self.direc_strike: bool = False
         self.Rusck_max_voltage: float = 0.0
+    @property
+    def X_location(self):  #X Coordinate in meters from the initial location
+        return self.Location_x
+        
 
+    @X_location.setter
+    def X_location(self, value):
+        """value: Y coordinate in meters (relative or absolute)
+        type: "rel" for relative to initial location, "abs" for absolute from the initial location
+        """
+        self.Location_x=value
+        x = value + self.initXY.X
+        y = self.Y_location + self.initXY.Y
+        lat, lon = self.geo_transformer.to_geographic(x, y)
+        self.GeoLocation = PointLatLng(lat, lon)
+    @property
+
+   
+    def Y_location(self): #Y Coordinate in meters from the initial location
+        #
+        return self.Location_y
+
+    @Y_location.setter
+    def Y_location(self, value):
+        """value: Y coordinate in meters (relative or absolute)
+        type: "rel" for relative to initial location, "abs" for absolute from the initial location
+        """
+        self.Location_y=value
+        x = self.X_location + self.initXY.X
+        y = value + self.initXY.Y
+        lat, lon = self.geo_transformer.to_geographic(x, y)
+        self.GeoLocation = PointLatLng(lat, lon)
     # -------------------------------------------------
     # Lightning file generation (ATP / Yaluk)
     # -------------------------------------------------

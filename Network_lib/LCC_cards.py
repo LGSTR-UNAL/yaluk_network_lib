@@ -13,9 +13,26 @@ def branch_card_lcc(num_conductors, max_len=80):
             current_line += token
     current_line+="\n"
     lines.append(current_line)
-    return lines
+    return "".join(lines)
 
+def arg_card_lcc(num_conductors, max_len=80):
+    prefix = "ARG,"
+    lines = []
+    current_line = prefix
 
+    for k in range(1, num_conductors + 1):
+        for token in (f"IN_{k:03d}", f"OUT{k:03d}"):
+            # +1 for comma if needed
+            addition = ("" if current_line.endswith(",") else ",") + token
+
+            if len(current_line) + len(addition) > max_len:
+                lines.append(current_line)
+                current_line = token  # new line without prefix
+            else:
+                current_line += addition
+    current_line+="\n"
+    lines.append(current_line)
+    return "\n".join(lines)
 def conductor_card_lcc(idx, cp):
     """
     Fixed-format conductor card (METRIC section)

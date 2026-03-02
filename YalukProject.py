@@ -8,8 +8,8 @@ import datetime
 import pickle
 import numpy as np
 
-from Network_lib import Network
-from Lightning_lib import (
+from .Network_lib import Network
+from .Lightning_lib import (
     Lightning,
     Lightning_stat,
     LightningChannel,
@@ -122,6 +122,7 @@ class YalukProject:
             [atp_executable, atp_file],
             check=False,
         )
+
     def MakeYalukSettingsFile(self):
 
         case_folder = os.path.join(self.GenSettings.path, "CaseFiles")
@@ -130,25 +131,53 @@ class YalukProject:
 
         with open(misc_file, "w") as file:
             file.write(f"{self.Channel.Velocity:0.00E} % Velocidad descarga retorno\n")
-            file.write(f"{self.Channel.Atenuation_const:0.00E} % Constante de Atenuación para MTLE si es = 0 usa modelo TL(m).zlam\n")
-            file.write(f"{self.Channel.Heigth:0.00E} % Altura de la Nube(m)......................................Hcan\n")
-            file.write(f"{int(not self.SimSettings.Perfectsoil)} % Conductividad activa\n")
+            file.write(
+                f"{self.Channel.Atenuation_const:0.00E} % Constante de Atenuación para MTLE si es = 0 usa modelo TL(m).zlam\n"
+            )
+            file.write(
+                f"{self.Channel.Heigth:0.00E} % Altura de la Nube(m)......................................Hcan\n"
+            )
+            file.write(
+                f"{int(not self.SimSettings.Perfectsoil)} % Conductividad activa\n"
+            )
             file.write(f"{self.SimSettings.Conductivity:0.00E}\n")
             file.write(f"{self.SimSettings.Permitivity:0.00E}\n")
             file.write(f"{self.SimSettings.Dx:0.00E}\n")
             file.write(f"{int(self.SimSettings.Typewaveform)}\n")
             file.write(f"{self.SimSettings.MaxDistCamp}\n")
-            file.write(f"{self.Channel.Velocity:0.00E0} % Velocidad de la Descarga de retorno(m / s)....................v\n")
-            file.write(f"{self.Channel.Atenuation_const:0.00E0} % Constante de Atenuación para MTLE si es = 0 usa modelo TL(m).zlam\n")
-            file.write(f"{self.Channel.Heigth:0.00E0} % Altura de la Nube(m)......................................Hcan\n")
-            file.write(f"20e-6 % Tiempo de cálculo primera ventana(s)......................tmax1 (Obsolete)\n")
-            file.write(f"40 % Numero de Divisiones segunda ventana.......................SIZE2 (Obsolete)\n")
-            file.write(f"{int(not self.SimSettings.Perfectsoil)} % Tener en Cuenta Conductividad  1(Si) 0(No)...............Conductividad\n")
-            file.write(f"{self.SimSettings.Conductivity:0.00E0} % Conductividad del terreno o(s / m)..........................o\n")
-            file.write(f"{self.SimSettings.Permitivity:0.00E0} % Permitividad del terreno e [p.u]..........................o\n")
-            file.write(f"{self.SimSettings.Dx:0.00E0} % Espaciamiento en distancia dx(s / m)..........................o\n")
-            file.write(f"{int(self.SimSettings.Typewaveform)} % Onda triangular o(s / m)..........................o\n")
-            file.write(f"{self.SimSettings.MaxDistCamp} % !Maximum distance for calculating EM Fields [m]..........................o\n")
+            file.write(
+                f"{self.Channel.Velocity:0.00E0} % Velocidad de la Descarga de retorno(m / s)....................v\n"
+            )
+            file.write(
+                f"{self.Channel.Atenuation_const:0.00E0} % Constante de Atenuación para MTLE si es = 0 usa modelo TL(m).zlam\n"
+            )
+            file.write(
+                f"{self.Channel.Heigth:0.00E0} % Altura de la Nube(m)......................................Hcan\n"
+            )
+            file.write(
+                f"20e-6 % Tiempo de cálculo primera ventana(s)......................tmax1 (Obsolete)\n"
+            )
+            file.write(
+                f"40 % Numero de Divisiones segunda ventana.......................SIZE2 (Obsolete)\n"
+            )
+            file.write(
+                f"{int(not self.SimSettings.Perfectsoil)} % Tener en Cuenta Conductividad  1(Si) 0(No)...............Conductividad\n"
+            )
+            file.write(
+                f"{self.SimSettings.Conductivity:0.00E0} % Conductividad del terreno o(s / m)..........................o\n"
+            )
+            file.write(
+                f"{self.SimSettings.Permitivity:0.00E0} % Permitividad del terreno e [p.u]..........................o\n"
+            )
+            file.write(
+                f"{self.SimSettings.Dx:0.00E0} % Espaciamiento en distancia dx(s / m)..........................o\n"
+            )
+            file.write(
+                f"{int(self.SimSettings.Typewaveform)} % Onda triangular o(s / m)..........................o\n"
+            )
+            file.write(
+                f"{self.SimSettings.MaxDistCamp} % !Maximum distance for calculating EM Fields [m]..........................o\n"
+            )
 
         # yaluk.ini
         yaluk_ini = os.path.join(self.GenSettings.path, "yaluk.ini")
@@ -169,8 +198,6 @@ class YalukProject:
             file.write(f".{self.SimSettings.Print_field_inf}.\n")
             file.write(f".{self.SimSettings.Read_field}.\n")
             file.write(f".{self.SimSettings.Status_profile}.\n")
-
-
 
 
 class YalukProject:
@@ -196,8 +223,7 @@ class YalukProject:
     def MakeAtpFile(self):
 
         filename = os.path.join(
-            self.GenSettings.path,
-            f"{self.GenSettings.Project_name}.atp"
+            self.GenSettings.path, f"{self.GenSettings.Project_name}.atp"
         )
 
         if os.path.exists(filename):
@@ -215,7 +241,9 @@ class YalukProject:
             file.write(f"C Project Name:{self.GenSettings.Project_name}\n")
             file.write(f"C   {self.GenSettings.Description}\n")
 
-            file.write(f"{self.SimSettings.Dt:0.0000E0}{self.SimSettings.Tmax:0.0000E0}\n")
+            file.write(
+                f"{self.SimSettings.Dt:0.0000E0}{self.SimSettings.Tmax:0.0000E0}\n"
+            )
 
             file.write(
                 f"  {self.ATPSettings.Plot_freq:06d}     100       0       0       1       0       0       "
@@ -230,8 +258,7 @@ class YalukProject:
     def Save(self):
 
         filename = os.path.join(
-            self.GenSettings.path,
-            f"{self.GenSettings.Project_name}.yaluk"
+            self.GenSettings.path, f"{self.GenSettings.Project_name}.yaluk"
         )
 
         with open(filename, "wb") as file:
@@ -296,7 +323,9 @@ class YalukProject:
             file.write(f"{self.Channel.Velocity:0.00E} % Velocidad descarga retorno\n")
             file.write(f"{self.Channel.Atenuation_const:0.00E} % Atenuacion\n")
             file.write(f"{self.Channel.Heigth:0.00E} % Altura nube\n")
-            file.write(f"{int(not self.SimSettings.Perfectsoil)} % Conductividad activa\n")
+            file.write(
+                f"{int(not self.SimSettings.Perfectsoil)} % Conductividad activa\n"
+            )
             file.write(f"{self.SimSettings.Conductivity:0.00E}\n")
             file.write(f"{self.SimSettings.Permitivity:0.00E}\n")
             file.write(f"{self.SimSettings.Dx:0.00E}\n")
@@ -332,15 +361,13 @@ class YalukProject:
         self.MakeYalukExeFiles()
 
         atp_file = os.path.join(
-            self.GenSettings.path,
-            f"{self.GenSettings.Project_name}.atp"
+            self.GenSettings.path, f"{self.GenSettings.Project_name}.atp"
         )
 
         exe_path = os.path.join(self.GenSettings.path, "tp_yaluk.exe")
 
         subprocess.run(
-            ["tp_yaluk.exe", "BOTH", atp_file, "s", "-r"],
-            cwd=self.GenSettings.path
+            ["tp_yaluk.exe", "BOTH", atp_file, "s", "-r"], cwd=self.GenSettings.path
         )
 
         # Remove .tmp files
@@ -372,7 +399,7 @@ class YalukProject:
                 hm = max(c.Height for c in L.Configuration.Conductors)
 
                 if Rg > hm:
-                    dist_minima = np.sqrt(Rs**2 - (Rg - hm)**2)
+                    dist_minima = np.sqrt(Rs**2 - (Rg - hm) ** 2)
                 else:
                     dist_minima = Rs
 
@@ -385,16 +412,14 @@ class YalukProject:
                         distancia = abs(X0 - XA0)
                     else:
                         distancia = min(
-                            np.hypot(XA0 - X0, YA0 - Y0),
-                            np.hypot(XB0 - X0, YB0 - Y0)
+                            np.hypot(XA0 - X0, YA0 - Y0), np.hypot(XB0 - X0, YB0 - Y0)
                         )
                 elif dy == 0:
                     if (X0 - XA0) * (X0 - XB0) < 0:
                         distancia = abs(Y0 - YA0)
                     else:
                         distancia = min(
-                            np.hypot(XA0 - X0, YA0 - Y0),
-                            np.hypot(XB0 - X0, YB0 - Y0)
+                            np.hypot(XA0 - X0, YA0 - Y0), np.hypot(XB0 - X0, YB0 - Y0)
                         )
                 else:
                     M = dy / dx
@@ -408,8 +433,7 @@ class YalukProject:
                         distancia = np.hypot(Xc - X0, Yc - Y0)
                     else:
                         distancia = min(
-                            np.hypot(XA0 - X0, YA0 - Y0),
-                            np.hypot(XB0 - X0, YB0 - Y0)
+                            np.hypot(XA0 - X0, YA0 - Y0), np.hypot(XB0 - X0, YB0 - Y0)
                         )
 
                 if distancia < dist_minima:

@@ -8,8 +8,8 @@ import datetime
 import pickle
 import numpy as np
 
-from .Network_lib import Network
-from .Lightning_lib import (
+from Network_lib import Network
+from Lightning_lib import (
     Lightning,
     Lightning_stat,
     LightningChannel,

@@ -24,18 +24,22 @@ from .utils import get_short_path
 
 @dataclass
 class Network(IdentifyObject):
+    xmax: float | None = 0.0
+    ymax: float | None = 0.0
+    xmin: float | None = 0.0
+    ymin: float | None = 0.0
 
     class output:
-        def __init__(self, error=False, id_str="", index=0):
+        def __init__(self, error: bool = False, id_str: str = "", index: int = 0):
             self.error = error
             self.id = id_str
             self.index = index
 
-    def __init__(self, uid=None, name=None):
+    def __init__(self, uid: str = "", name: str = ""):
         super().__init__()
         print("Initializing network...")
-        self.uid = uid if uid is not None else ""
-        self.name = name if name is not None else ""
+        self.uid = uid if uid else ""
+        self.name = name if name else ""
         self.InitLatLong = PointLatLng(6.1924, -75.3979)
         geo_transform = CoordTransf()
         x, y = geo_transform.to_projected(self.InitLatLong.Lat, self.InitLatLong.Lng)
@@ -61,7 +65,7 @@ class Network(IdentifyObject):
         self.Vrusck_max = 0.0  # [m] Maximum Rusck voltage calculated for the network based on the distance to the lines and the maximum current
         self.min_distance = 1e15  # [m] Minimum distance from the strike point to the lines in the network
 
-    def update_limits(self, x, y):
+    def update_limits(self, x: float, y: float):
         if self.xmax is None or x > self.xmax:
             self.xmax = x
         if self.xmin is None or x < self.xmin:
@@ -71,7 +75,16 @@ class Network(IdentifyObject):
         if self.ymin is None or y < self.ymin:
             self.ymin = y
 
-    def AddNode(self, X, Y, Nodeidx=None, ctype="rel", label=None, RPAT=20):
+    def AddNode(
+        self,
+        X,
+        Y,
+        Nodeidx=None,
+        ctype="rel",
+        label=None,
+        RPAT=20,
+        configuration: str = "Default",
+    ):
         """Add a node to the network at coordinates (X,Y) in meters from the initial location.
         If Nodeidx is provided, it will be used as the index for the new node (max 4 characters).
         Otherwise, the index will be automatically assigned based on the number of existing nodes.
@@ -94,7 +107,7 @@ class Network(IdentifyObject):
                     salida.index = 0
             else:
                 salida.index = 0
-            newNode = Node(self.InitLatLong, RPAT)
+            newNode = Node(self.InitLatLong, RPAT, configuration)
             if ctype == "abs":
                 newNode.Location_X = X - self.InitXY.X
                 newNode.Location_Y = Y - self.InitXY.Y
@@ -256,9 +269,9 @@ class Network(IdentifyObject):
         return 0
 
     def MakeLineFiles(self, ruta: str = "CaseFiles/"):
-        os.makedirs(ruta, exist_ok=True)
+        os.makedirs(f"{self.name}/{ruta}", exist_ok=True)
         for i, line in enumerate(self.Lines):
-            filename = f"{ruta}linea_{i+1:03d}.txt"
+            filename = f"{self.name}/{ruta}linea_{i+1:03d}.txt"
             with open(filename, "w", encoding="utf-8") as file:
                 file.write(
                     f"{line.Configuration.Conductors._list[0].Conduct.Radio}              Radio del conductor\n"
@@ -435,7 +448,8 @@ class Network(IdentifyObject):
         """
         max_len = 80
         today = date.today()
-        filename = f"{ruta}{self.name}.atp"
+        os.makedirs(f"{self.name}", exist_ok=True)
+        filename = f"{self.name}/{self.name}.atp"
         with open(filename, "w", encoding="utf-8") as file:
             if direct_strike == True:
                 self.num_lines_FDTD = 0

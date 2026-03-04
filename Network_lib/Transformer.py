@@ -2,6 +2,8 @@ from typing import List
 from enum import Enum
 from .IdentifiedObject import IdentifyObject
 from .Node import Node, PhaseName
+
+
 # Assumes these exist in your project
 # from network_library import Node, PhaseName, Element_id
 def decode_phases(mask: int):
@@ -13,19 +15,23 @@ def decode_phases(mask: int):
     if (mask // 100) % 10 == 1:
         phases.append(PhaseName.C)
     return phases
+
+
 class Transformer(IdentifyObject):
     """
     Object transformer of two winding
     """
 
-    def __init__(self,
-                 CHV: float = None,
-                 CLV: float = None,
-                 CHL: float = None,
-                 ground: float = None,
-                 NHV=None,
-                 NLV=None,
-                 phases=None):
+    def __init__(
+        self,
+        CHV: float = None,
+        CLV: float = None,
+        CHL: float = None,
+        ground: float = None,
+        NHV=None,
+        NLV=None,
+        phases=None,
+    ):
         """
         This constructor covers all C# overloads by using defaults + *phases.
         """
@@ -62,11 +68,7 @@ class Transformer(IdentifyObject):
         # Phase handling (single, double, or three phase)
         if phases is None:
             # Default to three-phase if not specified
-            self.Phases_connected.extend([
-                PhaseName.A,
-                PhaseName.B,
-                PhaseName.C
-            ])
+            self.Phases_connected.extend([PhaseName.A, PhaseName.B, PhaseName.C])
         elif isinstance(phases, int):
             # If an integer mask is provided, decode it
             self.Phases_connected.extend(decode_phases(phases))
@@ -74,17 +76,12 @@ class Transformer(IdentifyObject):
             # If a list of phases is provided, use it directly
             self.Phases_connected.extend(phases)
 
-
     # ------------------------------------------------------------------
     # Internal population logic (maps Transformer_populate)
     # ------------------------------------------------------------------
-    def _transformer_populate(self,
-                              CHV: float,
-                              CLV: float,
-                              CHL: float,
-                              ground: float,
-                              NHV,
-                              NLV):
+    def _transformer_populate(
+        self, CHV: float, CLV: float, CHL: float, ground: float, NHV, NLV
+    ):
         self.Phases_connected = []
         self.HV_Capacitance = CHV
         self.LV_Capacitance = CLV
@@ -144,9 +141,8 @@ class Transformer(IdentifyObject):
                 f"  {self.NodeLV.id}{phase.value}{self.NodeHV.id}{PhaseName.N.value}"
                 f"                        {self.LV_Capacitance:6.0E}                                   0\n"
             )
-
+        if not self.NodeHV.SurgeArresters:
             file.write(
                 f"  {self.NodeHV.id}{PhaseName.N.value}"
-                f"                  {self.G_Resistance:6.1f}                                               0\n"
+                f"                  {self.NodeHV.RPAT:6.1f}                                               0\n"
             )
-

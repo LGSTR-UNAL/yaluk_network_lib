@@ -23,7 +23,12 @@ class Element_id:
 
 
 class Node(IdentifyObject):
-    def __init__(self, location: Optional[PointLatLng] = None, RPAT=20):
+    def __init__(
+        self,
+        location: Optional[PointLatLng] = None,
+        RPAT=20,
+        configuration: str = "Default",
+    ):
         super().__init__()
         self.geo_transformer = CoordTransf()
         self.initlocation = (
@@ -45,6 +50,7 @@ class Node(IdentifyObject):
         self.Location_x = 0.0  # X Coordinate in meters from the initial location
         self.Location_y = 0.0  # Y Coordinate in meters from the initial location
         self.RPAT = RPAT
+        self.Configuration = configuration
 
     @property
     def InitLatLong(self) -> PointLatLng:

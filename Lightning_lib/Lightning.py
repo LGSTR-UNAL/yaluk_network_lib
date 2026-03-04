@@ -1,6 +1,7 @@
 from enum import Enum
 import os
-from Network_lib.GeoTransform import PointLatLng, PointXY, CoordTransf
+from ..Network_lib.GeoTransform import PointLatLng, PointXY, CoordTransf
+
 
 class Current_Waveform(Enum):
     Heidler = 0
@@ -14,7 +15,7 @@ class Lightning:
         self.Location_x: float = 0.0
         self.Location_y: float = 0.0
         self.initlocation = PointLatLng()
-        self.GeoLocation= PointLatLng()
+        self.GeoLocation = PointLatLng()
         self.initXY = PointXY()
         # Current parameters
         self.Magnitude: float = 0.0
@@ -28,7 +29,7 @@ class Lightning:
         self.tf2: float = 0.0
         self.tc1: float = 50e-6
         self.tc2: float = 0.0
-        self.n1: float = 4.
+        self.n1: float = 4.0
         self.n2: float = 0.0
 
         # Waveform
@@ -39,25 +40,24 @@ class Lightning:
         self.line_id_nearest: int = 0
         self.direc_strike: bool = False
         self.Rusck_max_voltage: float = 0.0
+
     @property
-    def X_location(self):  #X Coordinate in meters from the initial location
+    def X_location(self):  # X Coordinate in meters from the initial location
         return self.Location_x
-        
 
     @X_location.setter
     def X_location(self, value):
         """value: Y coordinate in meters (relative or absolute)
         type: "rel" for relative to initial location, "abs" for absolute from the initial location
         """
-        self.Location_x=value
+        self.Location_x = value
         x = value + self.initXY.X
         y = self.Y_location + self.initXY.Y
         lat, lon = self.geo_transformer.to_geographic(x, y)
         self.GeoLocation = PointLatLng(lat, lon)
-    @property
 
-   
-    def Y_location(self): #Y Coordinate in meters from the initial location
+    @property
+    def Y_location(self):  # Y Coordinate in meters from the initial location
         #
         return self.Location_y
 
@@ -66,32 +66,44 @@ class Lightning:
         """value: Y coordinate in meters (relative or absolute)
         type: "rel" for relative to initial location, "abs" for absolute from the initial location
         """
-        self.Location_y=value
+        self.Location_y = value
         x = self.X_location + self.initXY.X
         y = value + self.initXY.Y
         lat, lon = self.geo_transformer.to_geographic(x, y)
         self.GeoLocation = PointLatLng(lat, lon)
+
     # -------------------------------------------------
     # Lightning file generation (ATP / Yaluk)
     # -------------------------------------------------
     def MakeLightningFile(self, i: int, path: str) -> int:
 
-        filename = os.path.join(
-            path,
-            f"corr_{i:05d}.txt"
-        )
+        filename = os.path.join(path, f"corr_{i:05d}.txt")
 
         if os.path.exists(filename):
             os.remove(filename)
 
         with open(filename, "w") as file:
-            file.write(f"{self.Ih1:0.00E}   % Magnitud Corriente 1era funcion Heidler.....Ih1\n")
-            file.write(f"{self.Ih2:0.00E}   % Magnitud Corriente 2da funcion Heidler.....Ih2\n")
-            file.write(f"{self.tf1:0.00E}   % tiempo de Frente 1era Funcion Heidler.......tao11\n")
-            file.write(f"{self.tc1:0.00E}   % Tiempo de Cola 1era Funcion Heidler.........tao21\n")
-            file.write(f"{self.tf2:0.00E}   % Tiempo de Frente 2da Funcion Heidler........tao12\n")
-            file.write(f"{self.tc2:0.00E}   % Tiempo de Cola 2da Funcion Heidler..........tao22\n")
-            file.write(f"{self.n1:0.00E}   % Constante 1era funcion Heidler..............n1\n")
+            file.write(
+                f"{self.Ih1:0.00E}   % Magnitud Corriente 1era funcion Heidler.....Ih1\n"
+            )
+            file.write(
+                f"{self.Ih2:0.00E}   % Magnitud Corriente 2da funcion Heidler.....Ih2\n"
+            )
+            file.write(
+                f"{self.tf1:0.00E}   % tiempo de Frente 1era Funcion Heidler.......tao11\n"
+            )
+            file.write(
+                f"{self.tc1:0.00E}   % Tiempo de Cola 1era Funcion Heidler.........tao21\n"
+            )
+            file.write(
+                f"{self.tf2:0.00E}   % Tiempo de Frente 2da Funcion Heidler........tao12\n"
+            )
+            file.write(
+                f"{self.tc2:0.00E}   % Tiempo de Cola 2da Funcion Heidler..........tao22\n"
+            )
+            file.write(
+                f"{self.n1:0.00E}   % Constante 1era funcion Heidler..............n1\n"
+            )
             file.write(f"{self.n2}   % Constante 2da funcion Heidler..............n2\n")
             file.write(f"{self.X_location}   % Posición en X del Rayo..........X0\n")
             file.write(f"{self.Y_location}   % Posición en Y del Rayo..........Y0\n")

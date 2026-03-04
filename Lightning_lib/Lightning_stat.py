@@ -25,10 +25,11 @@ class Lightning_stat:
         self.Model: StatI_ModelType = M
 
         # Spatial boundaries
-        self.Xmin: float = net.xmin - dist
-        self.Xmax: float = net.xmax + dist
-        self.Ymin: float = net.ymin - dist
-        self.Ymax: float = net.ymax + dist
+        self.Xmin: float = net.xmin-dist
+        self.Xmax: float = net.xmax+dist
+        self.Ymin: float = net.ymin-dist
+        self.Ymax: float = net.ymax+dist
+        self.Area: float = (self.Xmax - self.Xmin) * (self.Ymax - self.Ymin)
         self.initlocation = PointLatLng(net.InitLatLong.Lat, net.InitLatLong.Lng)
         self.x_init, self.y_init = net.InitXY.X, net.InitXY.Y
         self.initXY = PointXY(self.x_init, self.y_init)

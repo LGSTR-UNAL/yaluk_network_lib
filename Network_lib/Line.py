@@ -149,7 +149,7 @@ class Line(IdentifyObject):
         hmax = self.Configuration.get_max_height() if self.Configuration else 0.0
         
         if Rg > hmax:
-            threshold = np.hypot(Rs, Rg - hmax)
+            threshold = np.sqrt(Rs **2 -(Rg - hmax)**2)
         else:
             threshold = Rs
         distance, closest_node = self.Dist2line(X,Y)

@@ -114,7 +114,7 @@ def plot_lines(df_lines,
 def plot_lightnings(df_lightnings,
                     coord_type="cartesian",
                     mode="categorical",
-                    value_col="Rusck_max_voltage",
+                    value_col="Rusck_maxV",
                     threshold=50,
                     ax=None):
 

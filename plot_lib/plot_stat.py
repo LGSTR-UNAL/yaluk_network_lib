@@ -120,7 +120,7 @@ import matplotlib.pyplot as plt
 def plot_log_fail(bin_dict,
                         key="max",
                         nmax=None,
-                        minVoltage=100,CFO_factor=1.25,Vcfo=200):
+                        minVoltage=100,CFO_factor=1.25,Vcfo=200,Area=10,GFD=1):
 
     sns.set_theme(style="whitegrid", context="talk")
 
@@ -130,7 +130,7 @@ def plot_log_fail(bin_dict,
         nmax = df["exceed_count"].max()
 
     # Scale exceedance
-    df["scaled_exceed"] = df["exceed_count"] / nmax
+    df["scaled_exceed"] = df["exceed_count"] / nmax*GFD*Area
 
     # Remove zero values (log scale protection)
     df = df[df["scaled_exceed"] > 0]
@@ -149,7 +149,7 @@ def plot_log_fail(bin_dict,
     ax.set_yscale("log")
 
     ax.set_xlabel("CFO (kV)")
-    ax.set_ylabel("Probailidad")
+    ax.set_ylabel("Flameos por año")
 
     # Set X-axis lower bound if provided
     if minVoltage is not None:
@@ -162,7 +162,7 @@ def plot_log_fail(bin_dict,
             color="gray",
             alpha=0.6)
 
-    ax.set_title("Probabilidad de falla vs CFO")
+    ax.set_title(f"Flameos línea por año vs CFO con GFD: {GFD} [rayos/km²] y Área: {Area} km²")
 
     intersection_value = None
     # ---- Add Vcfo line and compute intersection ----
@@ -177,7 +177,7 @@ def plot_log_fail(bin_dict,
         # Interpolate exceedance value at Vcfo
         if Vcfo >= x.min() and Vcfo <= x.max():
             intersection_value = np.interp(Vcfo, x/CFO_factor, y)
-            print(f"Exceedance at Vcfo ({Vcfo} kV): {intersection_value:.6e}")
+            print(f"Salidas por año Vcfo ({Vcfo} kV): {intersection_value:.6e}")
 
             # Mark intersection point
             ax.scatter(Vcfo,

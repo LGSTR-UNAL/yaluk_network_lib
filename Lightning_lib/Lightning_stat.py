@@ -5,11 +5,11 @@ from typing import List
 
 from scipy.stats import lognorm
 
-from ..Network_lib.GeoTransform import PointLatLng, PointXY
+from Network_lib.GeoTransform import PointLatLng, PointXY
 
 from .Lightning import Lightning
 from .Lightning import Current_Waveform
-from ..Network_lib.Network import Network
+from Network_lib.Network import Network
 
 
 class StatI_ModelType(Enum):

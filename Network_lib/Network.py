@@ -4,6 +4,8 @@ import token
 from typing import List, Optional
 import math, io
 from pathlib import Path
+import io
+import zipfile
 
 # from click import Path
 from .Node import Node, PhaseName
@@ -20,6 +22,7 @@ from .GeoTransform import CoordTransf, PointLatLng, PointXY
 from dataclasses import dataclass, field
 from datetime import date
 from .utils import get_short_path
+from .ATP_cards_w import write_branches,write_footer,write_header,write_models,write_output,write_sources
 
 
 @dataclass
@@ -269,27 +272,64 @@ class Network(IdentifyObject):
         return 0
 
     def MakeLineFiles(self, ruta: str = "CaseFiles/"):
-        os.makedirs(f"{self.name}/{ruta}", exist_ok=True)
-        for i, line in enumerate(self.Lines):
-            filename = f"{self.name}/{ruta}linea_{i+1:03d}.txt"
-            with open(filename, "w", encoding="utf-8") as file:
-                file.write(
+        
+        #os.makedirs(f"{self.name}/{ruta}", exist_ok=True) #revisar la creación del archivo
+        lines_buffer=io.BytesIO()
+        # for i, line in enumerate(self.Lines):
+        #     filename = f"{self.name}/{ruta}linea_{i+1:03d}.txt"
+        #     with open(filename, "w", encoding="utf-8") as file:
+        #         file.write(
+        #             f"{line.Configuration.Conductors._list[0].Conduct.Radio}              Radio del conductor\n"
+        #         )
+        #         file.write(
+        #             f"{line.Node_i.Location_X}   {line.Node_i.Location_Y}            % Posición del extremo A en XA0   YA0\n"
+        #         )
+        #         file.write(
+        #             f"{line.Node_j.Location_X}   {line.Node_j.Location_Y}            % Posición del extremo B en XA0   YA0\n"
+        #         )
+        #         for j in range(line.Configuration.Num_conductors):
+        #             cp = line.Configuration.Conductors._list[j]
+        #             file.write(
+        #                 f"{cp.Height}   {cp.Conduct.Resistance}            % Height [m] and Resistance [Ohm/km]\n"
+        #             )
+        #             file.write(
+        #                 f"{cp.Relative_X_location}             % Relative position\n"
+        #             )
+
+        zip_buffer = io.BytesIO()
+
+        with zipfile.ZipFile(zip_buffer, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
+            
+            for i, line in enumerate(self.Lines):
+                filename = f"{ruta}linea_{i+1:03d}.txt"
+                
+                # Create in-memory text buffer
+                file_buffer = io.StringIO()
+                
+                file_buffer.write(
                     f"{line.Configuration.Conductors._list[0].Conduct.Radio}              Radio del conductor\n"
                 )
-                file.write(
+                file_buffer.write(
                     f"{line.Node_i.Location_X}   {line.Node_i.Location_Y}            % Posición del extremo A en XA0   YA0\n"
                 )
-                file.write(
+                file_buffer.write(
                     f"{line.Node_j.Location_X}   {line.Node_j.Location_Y}            % Posición del extremo B en XA0   YA0\n"
                 )
+                
                 for j in range(line.Configuration.Num_conductors):
                     cp = line.Configuration.Conductors._list[j]
-                    file.write(
+                    file_buffer.write(
                         f"{cp.Height}   {cp.Conduct.Resistance}            % Height [m] and Resistance [Ohm/km]\n"
                     )
-                    file.write(
+                    file_buffer.write(
                         f"{cp.Relative_X_location}             % Relative position\n"
                     )
+                
+                # Add to ZIP (convert to bytes)
+                zf.writestr(filename, file_buffer.getvalue())
+        zip_buffer.seek(0)
+        return zip_buffer
+
 
     def MakeLccFile(
         self,
@@ -369,7 +409,7 @@ class Network(IdentifyObject):
                 file.write("BLANK CARD ENDING JMARTI SETUP\n")
                 file.write("BEGIN NEW DATA CASE\n")
                 file.write("BLANK CARD\n")
-            p = Path("case1.ecf")
+            
 
             # filename = get_short_path(str(filename.resolve()))
             filename_dbm = str(filename).replace(".dat", ".dbm")
@@ -407,19 +447,63 @@ class Network(IdentifyObject):
                 file.write("BEGIN NEW DATA CASE\n")
                 file.write("BLANK\n")
                 file.write("BLANK\n")
+    from dataclasses import dataclass
 
-    def MakeAtpFile(
+    @dataclass
+    class AtpSettings:
+        """
+        :param direct_strike: Direct strike option for ATP file generation. If True, no lines will be considered for FDTD modeling.
+        :type direct_strike: bool
+        :param printfreq: Print frequency for ATP lis file output. Default is 999999 (no printing). Set to a positive integer to print every N steps.
+        :type printfreq: int
+        :param plotfreq: Plot frequency for ATP output. Default is 1 (every step). Set to a positive integer to plot every N steps.
+        :type plotfreq: int
+        :param pl4out: Plot4 output option for ATP file generation. If 1, a .pl4 file will be generated with the results. If 0, only a .lis file will be generated.
+        :type pl4out: int
+        :param NetwrkOut: Network output option for ATP lis file generation. If 1, network output will be printed in the .lis file. If 0, no network output will be printed.
+        :type NetwrkOut: int
+        :param SSPhasor: Print phasor option for ATP file generation. If 1, phasor information will be printed in the .lis file. If 0, no phasor information will be printed.
+        :type SSPhasor: int
+        :param MaxMinOut: Max/Min output option for ATP file generation. If 1, maximum and minimum values will be printed in the .lis file. If 0, no maximum or minimum values will be printed.
+        :type MaxMinOut: int
+        :param MemSave: Memory save option for ATP file generation. If 1, memory saving techniques will be applied in the ATP simulation. If 0, no memory saving techniques will be applied.
+        :type MemSave: int
+        :param ExtrPinOut: Extra print output option for ATP file generation. To be implemented in future versions. If 1, extra print output will be included in the .lis file. If 0, no extra print output will be included.
+        :type ExtrPinOut: int
+        """
+        direct_strike: bool = False
+        printfreq: int = 999999
+        plotfreq: int = 1
+        pl4out: int = 1
+        NetwrkOut: int = 1
+        SSPhasor: int = 1
+        MaxMinOut: int = 1
+        MemSave: int = 0
+        ExtrPinOut: int = 0
+    def MakeATPBuffer(self,settings:AtpSettings=None):
+        buffer = io.BytesIO()
+        if settings is None:
+            settings = self.AtpSettings()
+        def write(text):
+            buffer.write(text.encode("utf-8"))
+        write_header(write,self,settings)
+        write_models(write,self,settings)
+        write_branches(write,self)
+        write_sources(write,self)
+        write_footer(write,self)
+        buffer.seek(0)
+        return buffer
+    def MakeAtpFile(self,settings:AtpSettings=None):
+        if settings is None:
+            settings = self.AtpSettings()
+            
+        buffer=self.MakeATPBuffer(settings)
+        with open(self.name+".atp", "wb") as f:
+            buffer.seek(0)
+            f.write(buffer.read())
+    def MakeAtpFile2(
         self,
-        ruta: str = "",
-        direct_strike: bool = False,
-        printfreq: int = 999999,
-        plotfreq: int = 1,
-        pl4out: int = 1,
-        NetwrkOut: int = 1,
-        SSPhasor: int = 1,
-        MaxMinOut: int = 1,
-        MemSave: int = 0,
-        ExtrPinOut: int = 0,
+        settings:AtpSettings
     ):
         """
         Docstring for MakeAtpFile
@@ -451,7 +535,7 @@ class Network(IdentifyObject):
         os.makedirs(f"{self.name}", exist_ok=True)
         filename = f"{self.name}/{self.name}.atp"
         with open(filename, "w", encoding="utf-8") as file:
-            if direct_strike == True:
+            if settings.direct_strike == True:
                 self.num_lines_FDTD = 0
             else:
                 self.num_lines_FDTD = 0
@@ -473,9 +557,9 @@ class Network(IdentifyObject):
             # file.write(f"{plotfreq:08d} 1       1       1       1       0       0       0       0\n")
             # Options output files
             file.write(
-                f"{printfreq:8d}{plotfreq:8d}{NetwrkOut:8d}{SSPhasor:8d}{MaxMinOut:8d}{ExtrPinOut:8d}{MemSave:8d}{pl4out:8d}       0\n"
+                f"{settings.printfreq:8d}{settings.plotfreq:8d}{settings.NetwrkOut:8d}{settings.SSPhasor:8d}{settings.MaxMinOut:8d}{settings.ExtrPinOut:8d}{settings.MemSave:8d}{settings.pl4out:8d}       0\n"
             )
-            if direct_strike == False:
+            if settings.direct_strike == False:
                 file.write("C ATP File for Induced Voltages Model\n")
                 # Models definition for lines with FDTD
                 file.write("/MODELS\n")

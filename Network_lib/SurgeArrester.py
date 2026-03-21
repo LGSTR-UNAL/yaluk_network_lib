@@ -38,7 +38,7 @@ class SurgeArrester(Element_id):
                 # It must be implemented an error message
                 pass
 
-    def write_atp_file(self, file):
+    def write_atp_file(self, write):
         max_len = 80
         if not self.pch_file_name:
             return
@@ -52,12 +52,12 @@ class SurgeArrester(Element_id):
             if len(current_line) + len(token) > (max_len - 3):
                 current_line += ","
                 current_line = current_line.ljust(78) + "$$\n"
-                file.write(current_line)
+                write(current_line)
                 current_line = "  " + token
             else:
                 current_line += "," + token
 
-        file.write(current_line + "\n")
-        file.write(
+        write(current_line + "\n")
+        write(
             f"  N{self.Ni.idx:04d}{phases[-1].value}                  {self.Ni.RPAT:6.1f}\n"
         )

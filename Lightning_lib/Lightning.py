@@ -1,6 +1,6 @@
 from enum import Enum
 import os
-from ..Network_lib.GeoTransform import PointLatLng, PointXY, CoordTransf
+from Network_lib.GeoTransform import PointLatLng, PointXY, CoordTransf
 
 
 class Current_Waveform(Enum):

@@ -22,6 +22,6 @@ class Shunt_lump(IShunt_element):
         if (len(self.Lumped_elements) < (self.Node.Num_conductors if self.Node else 0)) and (P in (self.Node.Phases_id if self.Node else [])):
             self.Lumped_elements.append(E); self.Phases_connected.append(P); return len(self.Lumped_elements)
         return 0
-    def write_atp_file(self, file):
+    def write_atp_file(self, write):
         for le,ph in zip(self.Lumped_elements, self.Phases_connected):
-            file.write(f"SHUNT {self.Node.id}{ph.value} R={le.Resistance} C={le.Capacitance} L={le.Inductance}\n")
+            write(f"SHUNT {self.Node.id}{ph.value} R={le.Resistance} C={le.Capacitance} L={le.Inductance}\n")

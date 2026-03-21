@@ -120,29 +120,29 @@ class Transformer(IdentifyObject):
     # ------------------------------------------------------------------
     # ATP file writer (EXACT formatting preserved)
     # ------------------------------------------------------------------
-    def write_atp_file(self, file):
+    def write_atp_file(self, write):
         """
         Writes ATP shunt transformer cards.
         """
 
         for phase in self.Phases_connected:
 
-            file.write(
+            write(
                 f"  {self.NodeHV.id}{phase.value}{self.NodeLV.id}{phase.value}"
                 f"                        {self.HL_Capacitance:6.0E}                                   0\n"
             )
 
-            file.write(
+            write(
                 f"  {self.NodeHV.id}{phase.value}{self.NodeHV.id}{PhaseName.N.value}"
                 f"                        {self.HV_Capacitance:6.0E}                                   0\n"
             )
 
-            file.write(
+            write(
                 f"  {self.NodeLV.id}{phase.value}{self.NodeHV.id}{PhaseName.N.value}"
                 f"                        {self.LV_Capacitance:6.0E}                                   0\n"
             )
         if not self.NodeHV.SurgeArresters:
-            file.write(
+            write(
                 f"  {self.NodeHV.id}{PhaseName.N.value}"
                 f"                  {self.NodeHV.RPAT:6.1f}                                               0\n"
             )

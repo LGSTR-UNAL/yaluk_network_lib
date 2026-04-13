@@ -11,12 +11,12 @@ class Current_Waveform(Enum):
 class Lightning:
     def __init__(self):
         # Location
-        self.geo_transformer = CoordTransf()
+        self.geo_transformer: CoordTransf = CoordTransf()
         self.Location_x: float = 0.0
         self.Location_y: float = 0.0
-        self.initlocation = PointLatLng()
-        self.GeoLocation = PointLatLng()
-        self.initXY = PointXY()
+        self.initlocation: PointLatLng = PointLatLng()
+        self.GeoLocation: PointLatLng = PointLatLng()
+        self.initXY: PointXY = PointXY()
         # Current parameters
         self.Magnitude: float = 0.0
         self.Front_time: float = 0.0
@@ -42,11 +42,11 @@ class Lightning:
         self.Rusck_max_voltage: float = 0.0
 
     @property
-    def X_location(self):  # X Coordinate in meters from the initial location
+    def X_location(self) -> float:  # X Coordinate in meters from the initial location
         return self.Location_x
 
     @X_location.setter
-    def X_location(self, value):
+    def X_location(self, value: float) -> None:
         """value: Y coordinate in meters (relative or absolute)
         type: "rel" for relative to initial location, "abs" for absolute from the initial location
         """
@@ -57,12 +57,11 @@ class Lightning:
         self.GeoLocation = PointLatLng(lat, lon)
 
     @property
-    def Y_location(self):  # Y Coordinate in meters from the initial location
-        #
+    def Y_location(self) -> float:  # Y Coordinate in meters from the initial location
         return self.Location_y
 
     @Y_location.setter
-    def Y_location(self, value):
+    def Y_location(self, value: float) -> None:
         """value: Y coordinate in meters (relative or absolute)
         type: "rel" for relative to initial location, "abs" for absolute from the initial location
         """

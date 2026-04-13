@@ -1,3 +1,4 @@
+import io
 import math
 import random
 from enum import Enum
@@ -5,11 +6,11 @@ from typing import List
 
 from scipy.stats import lognorm
 
-from Network_lib.GeoTransform import PointLatLng, PointXY
+from ..Network_lib.GeoTransform import PointLatLng, PointXY
 
 from .Lightning import Lightning
 from .Lightning import Current_Waveform
-from Network_lib.Network import Network
+from ..Network_lib.Network import Network
 
 
 class StatI_ModelType(Enum):
@@ -25,10 +26,10 @@ class Lightning_stat:
         self.Model: StatI_ModelType = M
 
         # Spatial boundaries
-        self.Xmin: float = net.xmin-dist
-        self.Xmax: float = net.xmax+dist
-        self.Ymin: float = net.ymin-dist
-        self.Ymax: float = net.ymax+dist
+        self.Xmin: float = net.xmin - dist
+        self.Xmax: float = net.xmax + dist
+        self.Ymin: float = net.ymin - dist
+        self.Ymax: float = net.ymax + dist
         self.Area: float = (self.Xmax - self.Xmin) * (self.Ymax - self.Ymin)
         self.initlocation = PointLatLng(net.InitLatLong.Lat, net.InitLatLong.Lng)
         self.x_init, self.y_init = net.InitXY.X, net.InitXY.Y
@@ -163,6 +164,32 @@ class Lightning_stat:
                 )
 
                 i += 1
+
+    def Create_csvBuffer(self, filename: str, Vr: float = 0):
+
+        buffer = io.StringIO()
+        buffer.write(
+            "Case;Ih1;Ih2;tao11;tao21;tao12;tao22;n1;n2;"
+            "X0;Y0;direct_strike;min_dist;Line_id;Rusck_maxV\n"
+        )
+
+        sim_all = Vr <= 0
+        i = 1
+
+        for L in self.Lightnings:
+
+            buffer.write(
+                f"{i};{L.Ih1:.2f};{L.Ih2:.2f};"
+                f"{L.tf1:.3E};{L.tc1:.3E};"
+                f"{L.tf2:.3E};{L.tc2:.3E};"
+                f"{int(L.n1)};{int(L.n2)};"
+                f"{L.X_location:.2f};{L.Y_location:.2f};"
+                f"{int(L.direc_strike)};"
+                f"{L.min_dist:.2f};{L.line_id_nearest};"
+                f"{L.Rusck_max_voltage:.2f}\n"
+            )
+
+        return buffer
 
     def check_direct_strike(self, net: Network):
         for L in self.Lightnings:

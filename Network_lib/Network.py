@@ -22,7 +22,14 @@ from .GeoTransform import CoordTransf, PointLatLng, PointXY
 from dataclasses import dataclass, field
 from datetime import date
 from .utils import get_short_path
-from .ATP_cards_w import write_branches,write_footer,write_header,write_models,write_output,write_sources
+from .ATP_cards_w import (
+    write_branches,
+    write_footer,
+    write_header,
+    write_models,
+    write_output,
+    write_sources,
+)
 
 
 @dataclass
@@ -272,9 +279,9 @@ class Network(IdentifyObject):
         return 0
 
     def MakeLineFiles(self, ruta: str = "CaseFiles/"):
-        
-        #os.makedirs(f"{self.name}/{ruta}", exist_ok=True) #revisar la creación del archivo
-        lines_buffer=io.BytesIO()
+
+        # os.makedirs(f"{self.name}/{ruta}", exist_ok=True) #revisar la creación del archivo
+        lines_buffer = io.BytesIO()
         # for i, line in enumerate(self.Lines):
         #     filename = f"{self.name}/{ruta}linea_{i+1:03d}.txt"
         #     with open(filename, "w", encoding="utf-8") as file:
@@ -298,14 +305,16 @@ class Network(IdentifyObject):
 
         zip_buffer = io.BytesIO()
 
-        with zipfile.ZipFile(zip_buffer, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
-            
+        with zipfile.ZipFile(
+            zip_buffer, mode="w", compression=zipfile.ZIP_DEFLATED
+        ) as zf:
+
             for i, line in enumerate(self.Lines):
                 filename = f"{ruta}linea_{i+1:03d}.txt"
-                
+
                 # Create in-memory text buffer
                 file_buffer = io.StringIO()
-                
+
                 file_buffer.write(
                     f"{line.Configuration.Conductors._list[0].Conduct.Radio}              Radio del conductor\n"
                 )
@@ -315,7 +324,7 @@ class Network(IdentifyObject):
                 file_buffer.write(
                     f"{line.Node_j.Location_X}   {line.Node_j.Location_Y}            % Posición del extremo B en XA0   YA0\n"
                 )
-                
+
                 for j in range(line.Configuration.Num_conductors):
                     cp = line.Configuration.Conductors._list[j]
                     file_buffer.write(
@@ -324,12 +333,11 @@ class Network(IdentifyObject):
                     file_buffer.write(
                         f"{cp.Relative_X_location}             % Relative position\n"
                     )
-                
+
                 # Add to ZIP (convert to bytes)
                 zf.writestr(filename, file_buffer.getvalue())
         zip_buffer.seek(0)
         return zip_buffer
-
 
     def MakeLccFile(
         self,
@@ -409,7 +417,6 @@ class Network(IdentifyObject):
                 file.write("BLANK CARD ENDING JMARTI SETUP\n")
                 file.write("BEGIN NEW DATA CASE\n")
                 file.write("BLANK CARD\n")
-            
 
             # filename = get_short_path(str(filename.resolve()))
             filename_dbm = str(filename).replace(".dat", ".dbm")
@@ -447,6 +454,7 @@ class Network(IdentifyObject):
                 file.write("BEGIN NEW DATA CASE\n")
                 file.write("BLANK\n")
                 file.write("BLANK\n")
+
     from dataclasses import dataclass
 
     @dataclass
@@ -471,6 +479,7 @@ class Network(IdentifyObject):
         :param ExtrPinOut: Extra print output option for ATP file generation. To be implemented in future versions. If 1, extra print output will be included in the .lis file. If 0, no extra print output will be included.
         :type ExtrPinOut: int
         """
+
         direct_strike: bool = False
         printfreq: int = 999999
         plotfreq: int = 1
@@ -480,31 +489,34 @@ class Network(IdentifyObject):
         MaxMinOut: int = 1
         MemSave: int = 0
         ExtrPinOut: int = 0
-    def MakeATPBuffer(self,settings:AtpSettings=None):
+
+    def MakeATPBuffer(self, settings: AtpSettings = None):
         buffer = io.BytesIO()
         if settings is None:
             settings = self.AtpSettings()
+
         def write(text):
             buffer.write(text.encode("utf-8"))
-        write_header(write,self,settings)
-        write_models(write,self,settings)
-        write_branches(write,self)
-        write_sources(write,self)
-        write_footer(write,self)
+
+        write_header(write, self, settings)
+        write_models(write, self, settings)
+        write_branches(write, self)
+        write_sources(write, self)
+        write_output(write, self)
+        write_footer(write, self)
         buffer.seek(0)
         return buffer
-    def MakeAtpFile(self,settings:AtpSettings=None):
+
+    def MakeAtpFile(self, settings: AtpSettings = None):
         if settings is None:
             settings = self.AtpSettings()
-            
-        buffer=self.MakeATPBuffer(settings)
-        with open(self.name+".atp", "wb") as f:
+
+        buffer = self.MakeATPBuffer(settings)
+        with open(self.name + ".atp", "wb") as f:
             buffer.seek(0)
             f.write(buffer.read())
-    def MakeAtpFile2(
-        self,
-        settings:AtpSettings
-    ):
+
+    def MakeAtpFile2(self, settings: AtpSettings):
         """
         Docstring for MakeAtpFile
 

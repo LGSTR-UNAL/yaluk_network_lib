@@ -1,4 +1,6 @@
 from datetime import date
+from .Node import Node, PhaseName
+
 def write_header(write, self, settings):
     today = date.today()
     write(f"""BEGIN NEW DATA CASE
@@ -11,12 +13,11 @@ C  dT  >< Tmax >< Xopt >< Copt >
 {settings.printfreq:8d}{settings.plotfreq:8d}{settings.NetwrkOut:8d}{settings.SSPhasor:8d}{settings.MaxMinOut:8d}{settings.ExtrPinOut:8d}{settings.MemSave:8d}{settings.pl4out:8d}       0
 """)
 def write_models(write,self,settings):
-    if not settings.direct_strike or self.num_lines_FDTD > 0:
-        write(f"""C ATP File for Induced Voltages Model
-/MODELS
-MODELS
-INPUT              
-""")
+    if not self.direct_strike and self.num_lines_FDTD > 0:
+        write(f"C ATP File for Induced Voltages Model\n")
+        write(f"/MODELS\n")
+        write(f"MODELS\n")
+        write(f"INPUT\n")
         for i in range(len(self.Nodes)):
             node = self.Nodes[i]
             for j in range(node.Num_conductors):
@@ -61,37 +62,48 @@ INPUT
                     )
                 write("ENDUSE\n")
         write("ENDMODELS\n")
+    else:
+        write(f"C ATP File for Direct Strike Model\n")
 
 
 def write_model(write,self):
-    max_phases = max(len(line.Phases_connected) for line in self.Lines)
-    write("C -- This model is link with ATP by means of a iluminated line characteristic method\n")
-    write("C -- It must have four inputs for one single line (Va,Ia,Vb,Ib)\n")
-    for i in range(1,max_phases+1):
-        write(f"MODEL Yaluk{i}\n")
-        write("CONST\n")
-        write(f"cond {{VAL:{i}}} --num. phases\n")
-        write("INPUT\n")
-        write("  Va[1..cond]\n")
-        write("  Vb[1..cond]\n")
-        write("VAR Vfa[1..cond],Vfb[1..cond]\n")
-        write("OUTPUT\n")
-        write("   Vfa,Vfb\n")
-        write("DATA\n")
-        write("	No_Lin\n")
-        write(
-            f"MODEL yaluk_f FOREIGN YALUK_DLL_MODEL {{ixdata:4, ixin:{1+i*2}, ixout:{2*i}, ixvar:200}}\n"
-        )
-        write("EXEC -- using the DLL subroutine\n")
-        write("  USE yaluk_f AS yaluk_f\n")
-        write("    DATA xdata[1..4]:=[timestep,stoptime,cond,No_Lin]\n")
-        write("    INPUT xin[1..2*cond+1]:=[t,Va[1..cond],Vb[1..cond]]\n")
-        write("    OUTPUT 	Vfa[1..cond]:=xout[1..cond]\n")
-        write("		Vfb[1..cond]:=xout[cond+1..2*cond]\n")
-        write("  ENDUSE\n")
-        write("  ENDEXEC\n")
-        write("ENDMODEL\n")
+    if not self.direct_strike:
+        max_phases = max(len(line.Phases_connected) for line in self.Lines)
+        write("C -- This model is link with ATP by means of a iluminated line characteristic method\n")
+        write("C -- It must have four inputs for one single line (Va,Ia,Vb,Ib)\n")
+        for i in range(1,max_phases+1):
+            write(f"MODEL Yaluk{i}\n")
+            write("CONST\n")
+            write(f"cond {{VAL:{i}}} --num. phases\n")
+            write("INPUT\n")
+            write("  Va[1..cond]\n")
+            write("  Vb[1..cond]\n")
+            write("VAR Vfa[1..cond],Vfb[1..cond]\n")
+            write("OUTPUT\n")
+            write("   Vfa,Vfb\n")
+            write("DATA\n")
+            write("	No_Lin\n")
+            write(
+                f"MODEL yaluk_f FOREIGN YALUK_DLL_MODEL {{ixdata:4, ixin:{1+i*2}, ixout:{2*i}, ixvar:200}}\n"
+            )
+            write("EXEC -- using the DLL subroutine\n")
+            write("  USE yaluk_f AS yaluk_f\n")
+            write("    DATA xdata[1..4]:=[timestep,stoptime,cond,No_Lin]\n")
+            write("    INPUT xin[1..2*cond+1]:=[t,Va[1..cond],Vb[1..cond]]\n")
+            write("    OUTPUT 	Vfa[1..cond]:=xout[1..cond]\n")
+            write("		Vfb[1..cond]:=xout[cond+1..2*cond]\n")
+            write("  ENDUSE\n")
+            write("  ENDEXEC\n")
+            write("ENDMODEL\n")
 def write_branches(write,self):
+    def check_line_length(lcc_line, token):
+        if len(lcc_line) + len(token) > (max_len - 3):
+            lcc_line += ","
+            lcc_line = lcc_line.ljust(78) + "$$\n"
+            write(lcc_line)
+            return "  " + token
+        else:
+            return lcc_line + "," + token
     max_len = 80
     write("/BRANCH\n")
     write("C < n1 >< n2 ><ref1><ref2>< R  >< A  >< B  >\n")
@@ -172,25 +184,36 @@ def write_branches(write,self):
             lcc_line += token
             for ph in Linea.Phases_connected:
                 token = f"N{Linea.Node_i.idx:04d}{ph.value}"
-                if len(lcc_line) + len(token) > (max_len - 3):
-                    lcc_line += ","
-                    lcc_line = lcc_line.ljust(78) + "$$\n"
-                    write(lcc_line)
-                    lcc_line = "  " + token
-                else:
-                    lcc_line += "," + token
+                lcc_line = check_line_length(lcc_line, token)
+                token = f"N{Linea.Node_j.idx:04d}{ph.value}"
+                lcc_line = check_line_length(lcc_line, token)
             write(lcc_line + "\n")
-def write_sources(write,self):
+def write_sources(write,self,stroke):
     write("/SOURCE\n")
     write(
         "C < n 1><>< Ampl.  >< Freq.  ><Phase/T0><   A1   ><   T1   >< TSTART >< TSTOP  >\n"
     )
-    for Linea in self.Lines:
-        if Linea.isFDTD:
-            CARD_BODY = "                                                             0      1.E3\n"
-            for phase in Linea.Phases_connected:
-                write(f"60L{Linea.idx:04d}{phase.value}{CARD_BODY}")
-                write(f"60R{Linea.idx:04d}{phase.value}{CARD_BODY}")
+    if self.direct_strike:
+        if self.line_ds and self.line_ds.node_ds is not None:
+             tstart = 0.0
+             tstop = 1e3
+             #CARD_BODY = " 0      1.E4     4.E-6     5.E-5        2.                          1.E3\n"
+             CARD_BODY=f" 0{stroke.Ih1:10.2e}{stroke.tf1:10.2e}{stroke.tc1:10.2e}{stroke.n1:10.2e}          {tstart:10.2f}{tstop:10.2e}\n"
+             if PhaseName.N in self.line_ds.Phases_connected:
+                write(f"15N{self.line_ds.node_ds .idx:04d}{PhaseName.N.value}{CARD_BODY}")
+             else:
+                write(f"15N{self.line_ds.node_ds .idx:04d}{self.line_ds.Phases_connected[0].value}{CARD_BODY}")
+        else:
+            print("Warning: No direct strike line found. No source will be added to the ATP file.")
+ 
+        
+    else:    
+        for Linea in self.Lines:
+            if Linea.isFDTD:
+                CARD_BODY = "                                                             0      1.E3\n"
+                for phase in Linea.Phases_connected:
+                    write(f"60L{Linea.idx:04d}{phase.value}{CARD_BODY}")
+                    write(f"60R{Linea.idx:04d}{phase.value}{CARD_BODY}")
 def write_output(write,self):
     max_len = 80
     write("/OUTPUT\n")
@@ -207,7 +230,8 @@ def write_output(write,self):
     write(f"{c_line}\n")
 def write_footer(write,self):
     write("C ENDING DIRECTIVES\n")
-    write("BLANK MODELS\n")
+    if not self.direct_strike:
+        write("BLANK MODELS\n")
     write("BLANK BRANCH\n")
     write("BLANK SWITCH\n")
     write("BLANK SOURCE\n")

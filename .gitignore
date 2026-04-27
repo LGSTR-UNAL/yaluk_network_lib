@@ -1,2 +1,16 @@
 __pycache__/
 .venv/
+*.dbm
+*.bin
+*.pl4
+*.lis
+*.pch
+*.lib
+*.dat
+*.000
+*.dbg
+*.std
+*.gig
+*.big
+*.aux
+*.tmp

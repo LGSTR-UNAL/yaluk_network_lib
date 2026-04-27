@@ -19,6 +19,7 @@ class Line(IdentifyObject):
         self.isFDTD = is_FDTD
         self.Phases_connected = []
         self.isDirectStrike = isDirectStrike
+        self.node_ds = None
         if Config:
             self.Configuration = Config
 
@@ -152,10 +153,10 @@ class Line(IdentifyObject):
             threshold = np.sqrt(Rs **2 -(Rg - hmax)**2)
         else:
             threshold = Rs
-        distance, closest_node = self.Dist2line(X,Y)
+        distance, self.node_ds = self.Dist2line(X,Y)
         if distance <= threshold:
             self.isDirectStrike = True
-            closest_node.Directstrike = True
+            self.node_ds.Directstrike = True
             self.isFDTD = False
         else:
             self.isDirectStrike = False

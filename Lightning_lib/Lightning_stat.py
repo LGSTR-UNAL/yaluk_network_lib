@@ -1,16 +1,20 @@
+from __future__ import annotations
+
 import io
 import math
 import random
 from enum import Enum
-from typing import List
+from typing import TYPE_CHECKING, List
 
 from scipy.stats import lognorm
 
-from ..Network_lib.GeoTransform import PointLatLng, PointXY
+from Network_lib.GeoTransform import PointLatLng, PointXY
 
 from .Lightning import Lightning
 from .Lightning import Current_Waveform
-from ..Network_lib.Network import Network
+
+if TYPE_CHECKING:
+    from Network_lib.Network import Network
 
 
 class StatI_ModelType(Enum):

@@ -136,8 +136,9 @@ class Line(IdentifyObject):
         return DISTANCIA, closest_node
 
     def check_point_proximity(self, X,Y, threshold: float) -> bool:
+        
         distance = self.Dist2line(X,Y)
-        if distance <= threshold:
+        if distance <= threshold and distance > 0:
             self.isFDTD = True
         else:
             self.isFDTD = False

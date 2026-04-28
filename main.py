@@ -1,5 +1,5 @@
 
-from YalukProject import YalukProject
+from Project_lib.YalukProject import YalukProject
 from Network_lib import Node, PointLatLng, Configuration_Type, Conductor
 
 

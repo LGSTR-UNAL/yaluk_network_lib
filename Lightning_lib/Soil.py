@@ -5,3 +5,4 @@ class Soil:
 
         # Ground permitivity [p.u.]
         self.permitivity: float = 10.0
+        self.perfect_soil: bool = False

@@ -16,7 +16,7 @@ from Lightning_lib import (
     Soil,
 )
 
-from .Settings import SimulationSettings
+from .Settings import SimulationSettings,ProjectSettings
 
 
 class YalukProject:
@@ -352,98 +352,4 @@ class YalukProject:
             file.write(f".{self.SimSettings.Read_field}.\n")
             file.write(f".{self.SimSettings.Status_profile}.\n")
 
-    # ---------------------------------------------------------
-    # RUN ATP + YALUK
-    # ---------------------------------------------------------
-    def RunActiveCase(self):
-
-        self.MakeAtpFile()
-        self.MakeYalukExeFiles()
-
-        atp_file = os.path.join(
-            self.GenSettings.path, f"{self.GenSettings.Project_name}.atp"
-        )
-
-        exe_path = os.path.join(self.GenSettings.path, "tp_yaluk.exe")
-
-        subprocess.run(
-            ["tp_yaluk.exe", "BOTH", atp_file, "s", "-r"], cwd=self.GenSettings.path
-        )
-
-        # Remove .tmp files
-        for f in os.listdir(self.GenSettings.path):
-            if f.endswith(".tmp"):
-                os.remove(os.path.join(self.GenSettings.path, f))
-
-    # ---------------------------------------------------------
-    # DIRECT STRIKE COMPUTATION (FULL PORT)
-    # ---------------------------------------------------------
-    def Compute_directstrikes(self):
-
-        for lightning in self.LightStat.Lightnings:
-
-            Ih = lightning.Ih1
-            X0 = lightning.X_location
-            Y0 = lightning.Y_location
-
-            Rs = (10 * (Ih / 1000)) ** 0.65
-            Rg = 0.9 * Rs
-
-            for L in self.Current_Network.Lines:
-
-                XA0 = L.Node_i.Location_X
-                XB0 = L.Node_j.Location_X
-                YA0 = L.Node_i.Location_Y
-                YB0 = L.Node_j.Location_Y
-
-                hm = max(c.Height for c in L.Configuration.Conductors)
-
-                if Rg > hm:
-                    dist_minima = np.sqrt(Rs**2 - (Rg - hm) ** 2)
-                else:
-                    dist_minima = Rs
-
-                # Distance to segment
-                dx = XB0 - XA0
-                dy = YB0 - YA0
-
-                if dx == 0:
-                    if (Y0 - YA0) * (Y0 - YB0) < 0:
-                        distancia = abs(X0 - XA0)
-                    else:
-                        distancia = min(
-                            np.hypot(XA0 - X0, YA0 - Y0), np.hypot(XB0 - X0, YB0 - Y0)
-                        )
-                elif dy == 0:
-                    if (X0 - XA0) * (X0 - XB0) < 0:
-                        distancia = abs(Y0 - YA0)
-                    else:
-                        distancia = min(
-                            np.hypot(XA0 - X0, YA0 - Y0), np.hypot(XB0 - X0, YB0 - Y0)
-                        )
-                else:
-                    M = dy / dx
-                    B = YA0 - M * XA0
-                    Mp = -1 / M
-                    Bp = Y0 - Mp * X0
-                    Xc = (Bp - B) / (M - Mp)
-                    Yc = M * Xc + B
-
-                    if (Xc - XA0) * (Xc - XB0) < 0:
-                        distancia = np.hypot(Xc - X0, Yc - Y0)
-                    else:
-                        distancia = min(
-                            np.hypot(XA0 - X0, YA0 - Y0), np.hypot(XB0 - X0, YB0 - Y0)
-                        )
-
-                if distancia < dist_minima:
-                    lightning.direc_strike = True
-                    lightning.min_dist = distancia
-                    break
-                else:
-                    Vrusck = 1.2958 * 30 * Ih / 1e3 * hm / distancia
-
-                    if Vrusck > lightning.Rusck_max_voltage:
-                        lightning.Rusck_max_voltage = Vrusck
-                        lightning.min_dist = distancia
-                        lightning.line_id_nearest = L.idx
+    

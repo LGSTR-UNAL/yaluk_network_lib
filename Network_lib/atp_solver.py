@@ -17,6 +17,7 @@ ATP_RUNTIME_FILES = (
     "graphics.aux",
     "graphics.std",
     "blockd51.bin",
+    "Atp_Yaluk_lib.dll",
 )
 
 

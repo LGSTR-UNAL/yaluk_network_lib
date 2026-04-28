@@ -10,6 +10,7 @@ from .SurgeArrester import SurgeArrester
 from .Line import Line
 from .GeoTransform import CoordTransf,PointLatLng, PointXY
 from .IdentifiedObject import IdentifyObject
+from .net_setting import network_setting, network_setting_csv
 from .atp_solver import (
     cleanup_solver_files,
     check_required_output,
@@ -23,4 +24,4 @@ __all__ = ["PointLatLng","PointXY","PhaseName","Element_id","Network","NodeColle
            "ConductorPosition","Shunt_lump","lumped_element","IShunt_element",
            "Transformer","SurgeArrester","Line","CoordTransf","IdentifyObject","Node",
            "cleanup_solver_files","check_required_output","resolve_solver_executable",
-           "run_atp_file","run_atp_solver"]
+           "run_atp_file","run_atp_solver","network_setting","network_setting_csv"]

@@ -199,10 +199,12 @@ def write_sources(write,self,stroke):
              tstop = 1e3
              #CARD_BODY = " 0      1.E4     4.E-6     5.E-5        2.                          1.E3\n"
              CARD_BODY=f" 0{stroke.Ih1:10.2e}{stroke.tf1:10.2e}{stroke.tc1:10.2e}{stroke.n1:10.2e}          {tstart:10.2f}{tstop:10.2e}\n"
-             if PhaseName.N in self.line_ds.Phases_connected:
-                write(f"15N{self.line_ds.node_ds .idx:04d}{PhaseName.N.value}{CARD_BODY}")
+             if self.line_ds.Line_Config.num_conductors <3:
+                 phase_strike=self.line_ds.Phases_connected[0].value
              else:
-                write(f"15N{self.line_ds.node_ds .idx:04d}{self.line_ds.Phases_connected[0].value}{CARD_BODY}")
+                 phase_strike=PhaseName.N.value
+             write(f"15N{self.line_ds.node_ds .idx:04d}{phase_strike}{CARD_BODY}")
+             
         else:
             print("Warning: No direct strike line found. No source will be added to the ATP file.")
  

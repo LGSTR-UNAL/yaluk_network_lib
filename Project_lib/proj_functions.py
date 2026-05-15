@@ -1,17 +1,22 @@
 from pathlib import Path
-from Lightning_lib.LightningChannel import LightningChannel
-from Lightning_lib.Soil import Soil
-from Network_lib.Network import Network
-import Project_lib as yp
+from yaluk_network_lib.Lightning_lib.LightningChannel import LightningChannel
+from yaluk_network_lib.Lightning_lib.Soil import Soil
+from yaluk_network_lib.Network_lib.Network import Network
+import yaluk_network_lib.Project_lib as yp
 
-def write_misc_file(pr_settings,network):
+
+def write_misc_file(pr_settings, network):
     case_folder = Path(network.name) / "CaseFiles"
     case_folder.mkdir(parents=True, exist_ok=True)
-    misc_file = case_folder/ "miscelaneo.txt"
-			
+    misc_file = case_folder / "miscelaneo.txt"
+
     with open(misc_file, "w") as file:
-        file.write(f"{pr_settings.Channel_settings.Velocity:0.00E} % Velocidad descarga retorno\n")
-        file.write(f"{pr_settings.Channel_settings.Atenuation_const:0.00E} % Atenuacion\n")
+        file.write(
+            f"{pr_settings.Channel_settings.Velocity:0.00E} % Velocidad descarga retorno\n"
+        )
+        file.write(
+            f"{pr_settings.Channel_settings.Atenuation_const:0.00E} % Atenuacion\n"
+        )
         file.write(f"{pr_settings.Channel_settings.Heigth:0.00E} % Altura nube\n")
         file.write(f"3E-6 % Tiempo maximo\n")
         file.write(f"30 % Número de puntos\n")
@@ -23,10 +28,12 @@ def write_misc_file(pr_settings,network):
         file.write(f"{pr_settings.Sim_settings.Dx:0.00E}\n")
         file.write(f"{int(pr_settings.Sim_settings.Typewaveform)}\n")
         file.write(f"{pr_settings.Sim_settings.MaxDistCamp}\n")
-def write_yaluk_init_file(pr_settings,network):
-    
-    fname="yaluk.ini"
-    yaluk_ini  = Path(network.name) / fname
+
+
+def write_yaluk_init_file(pr_settings, network):
+
+    fname = "yaluk.ini"
+    yaluk_ini = Path(network.name) / fname
     # yaluk_ini = os.path.join(self.GenSettings.path, "yaluk.ini")
 
     with open(yaluk_ini, "w") as file:
@@ -45,21 +52,25 @@ def write_yaluk_init_file(pr_settings,network):
         file.write(f".{pr_settings.Sim_settings.Read_field}.\n")
         file.write(f".{pr_settings.Sim_settings.Status_profile}.\n")
 
-def create_project_files(pr_settings,network,stroke,solver_cwd,solver_path):   
-    write_misc_file(pr_settings,network)
-    write_yaluk_init_file(pr_settings,network)
-    stroke.MakeLightningFile(1, Path(network.name) / "CaseFiles")
-    network.MakeAtpFile(stroke=stroke, distance_threshold=pr_settings.Sim_settings.MaxDistCamp)
-    network.MakeLccFile(run_solver=True,
-                        solver_path=solver_path,
-                        solver_cwd=solver_cwd,)
-    network.MakeLineFiles(return_buffer=False)
- 
 
-def setup_settings(SimulationSettins_df, 
-                  Channel_settings_df, 
-                  Soil_settings_df, 
-                  Atp_settings_df):
+def create_project_files(pr_settings, network, stroke, solver_cwd, solver_path):
+    write_misc_file(pr_settings, network)
+    write_yaluk_init_file(pr_settings, network)
+    stroke.MakeLightningFile(1, Path(network.name) / "CaseFiles")
+    network.MakeAtpFile(
+        stroke=stroke, distance_threshold=pr_settings.Sim_settings.MaxDistCamp
+    )
+    network.MakeLccFile(
+        run_solver=True,
+        solver_path=solver_path,
+        solver_cwd=solver_cwd,
+    )
+    network.MakeLineFiles(return_buffer=False)
+
+
+def setup_settings(
+    SimulationSettins_df, Channel_settings_df, Soil_settings_df, Atp_settings_df
+):
     project = yp.ProjectSettings()
 
     settings = yp.SimulationSettings()

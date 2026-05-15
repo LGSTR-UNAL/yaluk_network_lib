@@ -1,6 +1,6 @@
 from enum import Enum
 import os
-from Network_lib.GeoTransform import PointLatLng, PointXY, CoordTransf
+from yaluk_network_lib.Network_lib.GeoTransform import PointLatLng, PointXY, CoordTransf
 
 
 class Current_Waveform(Enum):
@@ -9,7 +9,8 @@ class Current_Waveform(Enum):
 
 
 class Lightning:
-    def __init__(self):
+    def __init__(self, case: int = 0):
+        self.case = case
         # Location
         self.geo_transformer: CoordTransf = CoordTransf()
         self.Location_x: float = 0.0

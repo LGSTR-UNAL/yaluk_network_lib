@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, List
 
 from scipy.stats import lognorm
 
-from Network_lib.GeoTransform import PointLatLng, PointXY
+from yaluk_network_lib.Network_lib.GeoTransform import PointLatLng, PointXY
 
 from .Lightning import Lightning
 from .Lightning import Current_Waveform
@@ -76,9 +76,9 @@ class Lightning_stat:
 
         Ix2 = lognorm(s=self.std_dev_I2, scale=math.exp(math.log(self.Mean_Ip_2)))
 
-        for _ in range(self.Num_events):
+        for i in range(self.Num_events):
 
-            Li = Lightning()
+            Li = Lightning(case=i)
             Li.initXY = self.initXY
             Li.initlocation = self.initlocation
             Xrnd = rng.random()

@@ -1,5 +1,5 @@
 # Función para crear la red a partir de los datos definidos en los DataFrames
-import Network_lib as nl
+from yaluk_network_lib import Network_lib as nl
 import pandas as pd
 #Función para crear la red a partir de datos definidos en archivos csv
 from os import PathLike
@@ -135,9 +135,6 @@ def network_setting(
         trf_types = Trftype.loc[Trftype['id'] == t.trf_type]
         trf_type = trf_types.iloc[0] if not trf_types.empty else None
         net.AddTransf(label=t.label,CHV=float(trf_type.CHV), CLV=float(trf_type.CLV), CHL=float(trf_type.CHL), ground=float(trf_type.ground), NHV=node_trf,  phases=t.phases)
-    
-    from pathlib import Path
-    from Network_lib.utils import get_short_path
     
     ruta = Path('surges')
     for sa in Surge_Arresters.itertuples():

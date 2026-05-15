@@ -45,14 +45,14 @@ def write_yaluk_init_file(pr_settings,network):
         file.write(f".{pr_settings.Sim_settings.Read_field}.\n")
         file.write(f".{pr_settings.Sim_settings.Status_profile}.\n")
 
-def create_project_files(pr_settings,network,stroke):   
+def create_project_files(pr_settings,network,stroke,solver_cwd,solver_path):   
     write_misc_file(pr_settings,network)
     write_yaluk_init_file(pr_settings,network)
     stroke.MakeLightningFile(1, Path(network.name) / "CaseFiles")
     network.MakeAtpFile(stroke=stroke, distance_threshold=pr_settings.Sim_settings.MaxDistCamp)
     network.MakeLccFile(run_solver=True,
-                        solver_path=r"C:\EMTP\Solver\tp_yaluk.exe",
-                        solver_cwd=r"C:\EMTP\Solver",)
+                        solver_path=solver_path,
+                        solver_cwd=solver_cwd,)
     network.MakeLineFiles(return_buffer=False)
  
 

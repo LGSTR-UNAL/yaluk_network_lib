@@ -199,7 +199,7 @@ def write_sources(write,self,stroke):
              tstop = 1e3
              #CARD_BODY = " 0      1.E4     4.E-6     5.E-5        2.                          1.E3\n"
              CARD_BODY=f" 0{stroke.Ih1:10.2e}{stroke.tf1:10.2e}{stroke.tc1:10.2e}{stroke.n1:10.2e}          {tstart:10.2f}{tstop:10.2e}\n"
-             if self.line_ds.Line_Config.num_conductors <3:
+             if self.line_ds.Line_Config.num_conductors <=3:
                  phase_strike=self.line_ds.Phases_connected[0].value
              else:
                  phase_strike=PhaseName.N.value

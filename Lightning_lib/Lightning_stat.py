@@ -169,7 +169,7 @@ class Lightning_stat:
 
                 i += 1
 
-    def Create_csvBuffer(self, filename: str, Vr: float = 0):
+    def Create_csvBuffer(self, Vr: float = 0):
 
         buffer = io.StringIO()
         buffer.write(
@@ -183,7 +183,7 @@ class Lightning_stat:
         for L in self.Lightnings:
 
             buffer.write(
-                f"{i};{L.Ih1:.2f};{L.Ih2:.2f};"
+                f"{L.case+1};{L.Ih1:.2f};{L.Ih2:.2f};"
                 f"{L.tf1:.3E};{L.tc1:.3E};"
                 f"{L.tf2:.3E};{L.tc2:.3E};"
                 f"{int(L.n1)};{int(L.n2)};"

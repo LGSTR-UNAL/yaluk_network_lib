@@ -65,7 +65,7 @@ class Network(IdentifyObject):
         self.Shunt_elements = []
         self.SurgeArresters = []
         self.Tmax = 60e-6
-        self.Dt = 2e-8
+        self.Dt = 3e-8
         self.Dx = 10.0
         self.Dmax_induction = 0.0
         self.xmax = None
@@ -189,7 +189,7 @@ class Network(IdentifyObject):
         Linea.Node_j = Node_j
         Linea.Configuration = C_type
         if len(Linea.Phases_connected) > 3:
-            for ii in range(3, len(Linea.Phases_connected) + 1):
+            for ii in range(3, len(Linea.Phases_connected)):
                 Linea.Phases_connected[ii] = PhaseName.N
         h = self.Lines.Find(
             lambda L: (
@@ -514,7 +514,7 @@ class Network(IdentifyObject):
             return lccbuffer, solver_results
         return solver_results
 
-    def get_lcc_lib_zipbuffer(self, base_path):
+    def get_lcc_lib_zipbuffer(self, base_path, current_buffer=None):
 
         base_path = Path(base_path)
         lcc_dir = base_path / "lcc"
@@ -522,9 +522,11 @@ class Network(IdentifyObject):
         if not lcc_dir.exists():
             raise FileNotFoundError(f"{lcc_dir} not found")
 
-        zip_buffer = io.BytesIO()
+        current_buffer = current_buffer if current_buffer is not None else io.BytesIO()
 
-        with zipfile.ZipFile(zip_buffer, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        with zipfile.ZipFile(
+            current_buffer, "a", compression=zipfile.ZIP_DEFLATED
+        ) as zf:
 
             for file_path in lcc_dir.glob("*.lib"):
                 content = file_path.read_text(encoding="utf-8")
@@ -532,8 +534,8 @@ class Network(IdentifyObject):
                 # store inside zip under /lcc/
                 zf.writestr(f"lcc/{file_path.name}", content)
 
-        zip_buffer.seek(0)
-        return zip_buffer
+        current_buffer.seek(0)
+        return current_buffer
 
     from dataclasses import dataclass
 

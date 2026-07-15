@@ -1,8 +1,8 @@
 
 from enum import Enum
-from Lightning_lib.LightningChannel import LightningChannel
-from Lightning_lib.Soil import Soil
-from Network_lib import Network as nl
+from yaluk_network_lib.Lightning_lib.LightningChannel import LightningChannel
+from yaluk_network_lib.Lightning_lib.Soil import Soil
+from yaluk_network_lib.Network_lib import Network as nl
 
 
 class Current_model(Enum):

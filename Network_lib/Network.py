@@ -9,8 +9,6 @@ from pathlib import Path
 import io
 import zipfile
 
-from cv2 import threshold
-
 # from click import Path
 from .Node import Node, PhaseName
 from .collections import NodeCollection, LineCollection, TrfCollection
@@ -67,7 +65,7 @@ class Network(IdentifyObject):
         self.Shunt_elements = []
         self.SurgeArresters = []
         self.Tmax = 60e-6
-        self.Dt = 2e-8
+        self.Dt = 3e-8
         self.Dx = 10.0
         self.Dmax_induction = 0.0
         self.xmax = None
@@ -191,7 +189,7 @@ class Network(IdentifyObject):
         Linea.Node_j = Node_j
         Linea.Configuration = C_type
         if len(Linea.Phases_connected) > 3:
-            for ii in range(3, len(Linea.Phases_connected) + 1):
+            for ii in range(3, len(Linea.Phases_connected)):
                 Linea.Phases_connected[ii] = PhaseName.N
         h = self.Lines.Find(
             lambda L: (
@@ -285,7 +283,7 @@ class Network(IdentifyObject):
         self.SurgeArresters.append(SA)
         return 0
 
-    def MakeLineFiles(self, ruta: str = "CaseFiles/",return_buffer:bool=True):
+    def MakeLineFiles(self, ruta: str = "CaseFiles/", return_buffer: bool = True):
 
         # os.makedirs(f"{self.name}/{ruta}", exist_ok=True) #revisar la creación del archivo
         # lines_buffer = io.BytesIO()
@@ -346,7 +344,7 @@ class Network(IdentifyObject):
         zip_buffer.seek(0)
         if return_buffer:
             return zip_buffer
-        
+
         extract_dir = Path(self.name)
         extract_dir.parent.mkdir(parents=True, exist_ok=True)
         zip_buffer.seek(0)
@@ -354,7 +352,6 @@ class Network(IdentifyObject):
             zf.extractall(extract_dir)
 
         return extract_dir
-
 
     def MakeLccFile(
         self,
@@ -407,7 +404,7 @@ class Network(IdentifyObject):
         for i, line in enumerate(self.Lines):
 
             fname = f"lcc_{i+1:03d}.dat"
-            
+
             filename = Path(self.name) / Path(ruta) / fname
             filename.parent.mkdir(parents=True, exist_ok=True)
             with open(filename, "w", encoding="utf-8") as file:
@@ -513,11 +510,11 @@ class Network(IdentifyObject):
             for directory in solver_workdirs:
                 cleanup_solver_files(directory)
         if return_buffer:
-            lccbuffer=self.get_lcc_lib_zipbuffer(filename.parent)
+            lccbuffer = self.get_lcc_lib_zipbuffer(filename.parent)
             return lccbuffer, solver_results
         return solver_results
 
-    def get_lcc_lib_zipbuffer(base_path):
+    def get_lcc_lib_zipbuffer(self, base_path, current_buffer=None):
 
         base_path = Path(base_path)
         lcc_dir = base_path / "lcc"
@@ -525,9 +522,11 @@ class Network(IdentifyObject):
         if not lcc_dir.exists():
             raise FileNotFoundError(f"{lcc_dir} not found")
 
-        zip_buffer = io.BytesIO()
+        current_buffer = current_buffer if current_buffer is not None else io.BytesIO()
 
-        with zipfile.ZipFile(zip_buffer, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        with zipfile.ZipFile(
+            current_buffer, "a", compression=zipfile.ZIP_DEFLATED
+        ) as zf:
 
             for file_path in lcc_dir.glob("*.lib"):
                 content = file_path.read_text(encoding="utf-8")
@@ -535,8 +534,8 @@ class Network(IdentifyObject):
                 # store inside zip under /lcc/
                 zf.writestr(f"lcc/{file_path.name}", content)
 
-        zip_buffer.seek(0)
-        return zip_buffer
+        current_buffer.seek(0)
+        return current_buffer
 
     from dataclasses import dataclass
 
@@ -570,28 +569,44 @@ class Network(IdentifyObject):
         MemSave: int = 0
         ExtrPinOut: int = 0
 
-    def MakeATPBuffer(self, settings: AtpSettings = None, stroke: Lightning = None, distance_threshold: float = -1):
+    def MakeATPBuffer(
+        self,
+        settings: AtpSettings = None,
+        stroke: Lightning = None,
+        distance_threshold: float = -1,
+    ):
         if stroke is not None:
-            self.check_direct_strike(stroke.X_location, stroke.Y_location, stroke.Ih1, distance_threshold)
-            
+            self.check_direct_strike(
+                stroke.X_location, stroke.Y_location, stroke.Ih1, distance_threshold
+            )
+
             if not self.direct_strike:
                 stroke = None
-                print('* Impacto indirecto.')
-                print(f"  Distancia mínima al punto de impacto: {self.min_distance:.2f} m")
+                print("* Impacto indirecto.")
+                print(
+                    f"  Distancia mínima al punto de impacto: {self.min_distance:.2f} m"
+                )
                 print(f"  Tensión de Rusck máximo calculado: {self.Vrusck_max:.2f} kV")
-                print(f"  Línea más cercana al punto de impacto: {self.line_ds.name if not self.line_ds==None else 'N/A'}")
-                lcc_counter=0
+                print(
+                    f"  Línea más cercana al punto de impacto: {self.line_ds.name if not self.line_ds==None else 'N/A'}"
+                )
+                lcc_counter = 0
                 for line in self.Lines:
                     if line.isFDTD == True:
                         lcc_counter += 1
-                print(f"Número de líneas FDTD en la red: {lcc_counter}: {len(self.Lines)}")
+                print(
+                    f"Número de líneas FDTD en la red: {lcc_counter}: {len(self.Lines)}"
+                )
 
             else:
-                print('** Impacto Directo incluido en ATP')
-                print(f"   Distancia mínima al punto de impacto: {self.min_distance:.2f} m")
-                print(f"   Línea más cercana al punto de impacto: {self.line_ds.name if self.line_ds else 'N/A'}")
+                print("** Impacto Directo incluido en ATP")
+                print(
+                    f"   Distancia mínima al punto de impacto: {self.min_distance:.2f} m"
+                )
+                print(
+                    f"   Línea más cercana al punto de impacto: {self.line_ds.name if self.line_ds else 'N/A'}"
+                )
                 print(f"   Impacto directo: {self.direct_strike}")
-                
 
         buffer = io.BytesIO()
         if settings is None:
@@ -609,12 +624,17 @@ class Network(IdentifyObject):
         buffer.seek(0)
         return buffer
 
-    def MakeAtpFile(self, settings: AtpSettings = None, stroke: Lightning = None, distance_threshold: float = 0):
+    def MakeAtpFile(
+        self,
+        settings: AtpSettings = None,
+        stroke: Lightning = None,
+        distance_threshold: float = 0,
+    ):
 
         if settings is None:
             settings = self.AtpSettings()
         buffer = self.MakeATPBuffer(settings, stroke, distance_threshold)
-        file_name=Path(self.name) / f"{self.name}.atp"
+        file_name = Path(self.name) / f"{self.name}.atp"
         # crear carpeta si no existe
         file_name.parent.mkdir(parents=True, exist_ok=True)
         with open(file_name, "wb") as f:
@@ -1006,20 +1026,20 @@ class Network(IdentifyObject):
                 self.Description = line.split("Description: ", 1)[1]
 
     def check_direct_strike(self, X, Y, Imax, threshold_distance=0):
-        '''Check if the lightning strike is a direct strike to any line in the network. If it is a direct strike, return True and the line that is directly struck. If it is not a direct strike, return False and the line that is closest to the strike point, along with the maximum Rusck voltage calculated for that line and the minimum distance to that line.
+        """Check if the lightning strike is a direct strike to any line in the network. If it is a direct strike, return True and the line that is directly struck. If it is not a direct strike, return False and the line that is closest to the strike point, along with the maximum Rusck voltage calculated for that line and the minimum distance to that line.
         :param X: X coordinate of the lightning strike point
         :param Y: Y coordinate of the lightning strike point
         :param Imax: Maximum current of the lightning strike
         :param threshold_distance: Threshold distance for considering lines for FDTD simulation
         :return: direct_strike (bool), Vrusck_max (float), min_distance (float), line_name (str)
-        '''
+        """
         self.direct_strike = False
         self.line_ds = None
         line_name = None
         self.Vrusck_max = 0
         self.min_distance = 9999999
         if threshold_distance <= 100:
-            threshold_distance = 9999999 #[m] if the threshold distance is not specified or is too small, we consider all lines for FDTD
+            threshold_distance = 9999999  # [m] if the threshold distance is not specified or is too small, we consider all lines for FDTD
         for line in self.Lines:
             ds, distance = line.check_direct_strike(X, Y, Imax)
             if ds:
@@ -1043,7 +1063,7 @@ class Network(IdentifyObject):
                 if distance <= threshold_distance:
                     line.isFDTD = True
                 else:
-                    line.isFDTD = False        
+                    line.isFDTD = False
 
         return self.direct_strike, self.Vrusck_max, self.min_distance, line_name
 

@@ -1,18 +1,20 @@
-
 from matplotlib.collections import LineCollection
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-def plot_nodes(df_nodes,
-            value_col=None,
-            coord_type="cartesian",
-            cmap="viridis",
-            node_size=20,
-            show_labels=False,
-            label_offset=(2,2),
-            font_size=8,
-            ax=None):
+
+def plot_nodes(
+    df_nodes,
+    value_col=None,
+    coord_type="cartesian",
+    cmap="viridis",
+    node_size=20,
+    show_labels=False,
+    label_offset=(2, 2),
+    font_size=8,
+    ax=None,
+):
 
     if ax is None:
         fig, ax = plt.subplots(figsize=(8, 6))
@@ -29,18 +31,18 @@ def plot_nodes(df_nodes,
         ax.set_ylabel("Y")
 
     if value_col is None:
-        sc = ax.scatter(df_nodes[x_col],
-                        df_nodes[y_col],
-                        s=node_size,
-                        color="black",
-                        zorder=3)
+        sc = ax.scatter(
+            df_nodes[x_col], df_nodes[y_col], s=node_size, color="black", zorder=3
+        )
     else:
-        sc = ax.scatter(df_nodes[x_col],
-                        df_nodes[y_col],
-                        c=df_nodes[value_col],
-                        cmap=cmap,
-                        s=node_size,
-                        zorder=3)
+        sc = ax.scatter(
+            df_nodes[x_col],
+            df_nodes[y_col],
+            c=df_nodes[value_col],
+            cmap=cmap,
+            s=node_size,
+            zorder=3,
+        )
 
         fig.colorbar(sc, ax=ax).set_label(value_col)
     if show_labels:
@@ -53,7 +55,7 @@ def plot_nodes(df_nodes,
                 row["Name"],
                 fontsize=font_size,
                 color="black",
-                alpha=0.8
+                alpha=0.8,
             )
 
     ax.set_aspect("equal")
@@ -61,12 +63,14 @@ def plot_nodes(df_nodes,
     return fig, ax
 
 
-def plot_lines(df_lines,
-            value_col=None,
-            coord_type="cartesian",
-            cmap="plasma",
-            linewidth=2.5,
-            ax=None):
+def plot_lines(
+    df_lines,
+    value_col=None,
+    coord_type="cartesian",
+    cmap="plasma",
+    linewidth=2.5,
+    ax=None,
+):
 
     if ax is None:
         fig, ax = plt.subplots(figsize=(8, 6))
@@ -87,21 +91,14 @@ def plot_lines(df_lines,
     segments = [
         [(x1, y1), (x2, y2)]
         for x1, y1, x2, y2 in zip(
-            df_lines[xi],
-            df_lines[yi],
-            df_lines[xj],
-            df_lines[yj]
+            df_lines[xi], df_lines[yi], df_lines[xj], df_lines[yj]
         )
     ]
 
     if value_col is None:
-        lc = LineCollection(segments,
-                            colors="black",
-                            linewidths=linewidth)
+        lc = LineCollection(segments, colors="black", linewidths=linewidth)
     else:
-        lc = LineCollection(segments,
-                            cmap=cmap,
-                            linewidths=linewidth)
+        lc = LineCollection(segments, cmap=cmap, linewidths=linewidth)
         lc.set_array(np.array(df_lines[value_col]))
         fig.colorbar(lc, ax=ax).set_label(value_col)
 
@@ -111,15 +108,18 @@ def plot_lines(df_lines,
 
     return fig, ax
 
-def plot_lightnings(df_lightnings,
-                    coord_type="cartesian",
-                    mode="categorical",
-                    value_col="Rusck_maxV",
-                    threshold=50,
-                    ax=None):
+
+def plot_lightnings(
+    df_lightnings,
+    coord_type="cartesian",
+    mode="categorical",
+    value_col="Rusck_maxV",
+    threshold=50,
+    ax=None,
+):
 
     if ax is None:
-        fig, ax = plt.subplots(figsize=(8, 6))
+        fig, ax = plt.subplots(figsize=(18, 6))
     else:
         fig = ax.figure
 
@@ -134,28 +134,43 @@ def plot_lightnings(df_lightnings,
 
     if mode == "categorical":
         df_ds = df_lightnings[df_lightnings["direct_strike"] == 1]
-        ax.scatter(df_ds[x_col], df_ds[y_col],
-                color="red", s=10, label="Direct")
+        ax.scatter(df_ds[x_col], df_ds[y_col], color="red", s=10, label="Direct")
 
-        df_ind = df_lightnings[(df_lightnings["direct_strike"] == 0) & (df_lightnings[value_col] < threshold)]
-        ax.scatter(df_ind[x_col], df_ind[y_col],
-                color="blue", s=15, label="Indirect_eliminated")
-        
-        df_ind = df_lightnings[(df_lightnings["direct_strike"] == 0) & (df_lightnings[value_col] > threshold)]
-        ax.scatter(df_ind[x_col], df_ind[y_col],
-                color="green", s=20, label="Indirect")
-        
+        df_ind = df_lightnings[
+            (df_lightnings["direct_strike"] == 0)
+            & (df_lightnings[value_col] < threshold)
+        ]
+        ax.scatter(
+            df_ind[x_col],
+            df_ind[y_col],
+            color="blue",
+            s=15,
+            label="Indirect_eliminated",
+        )
+
+        df_ind = df_lightnings[
+            (df_lightnings["direct_strike"] == 0)
+            & (df_lightnings[value_col] > threshold)
+        ]
+        ax.scatter(df_ind[x_col], df_ind[y_col], color="green", s=20, label="Indirect")
+
         ax.legend()
 
     elif mode == "heatmap":
-        sc = ax.scatter(df_lightnings[x_col],
-                        df_lightnings[y_col],
-                        c=df_lightnings[value_col],
-                        cmap="inferno",
-                        s=30)
+        sc = ax.scatter(
+            df_lightnings[x_col],
+            df_lightnings[y_col],
+            c=df_lightnings[value_col],
+            cmap="inferno",
+            s=30,
+        )
 
         fig.colorbar(sc, ax=ax).set_label(value_col)
 
     ax.set_aspect("equal")
-
-    return fig, ax 
+    area = (
+        (df_lightnings[x_col].max() - df_lightnings[x_col].min())
+        * (df_lightnings[y_col].max() - df_lightnings[y_col].min())
+        / 1e6
+    )
+    return fig, ax, area

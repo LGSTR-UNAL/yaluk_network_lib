@@ -8,7 +8,6 @@ from pathlib import Path
 
 from .utils import get_short_path
 
-
 ATP_RUNTIME_FILES = (
     "startup",
     "startup.big",
@@ -24,6 +23,9 @@ ATP_RUNTIME_FILES = (
 def resolve_solver_executable(solver_path: str | os.PathLike | None = None) -> Path:
     if solver_path is not None:
         return Path(solver_path)
+
+    if "SOLVER_PATH" in os.environ:
+        return Path(os.environ["SOLVER_PATH"])
 
     if platform.system() == "Windows":
         default_windows_solver = Path(r"C:\EMTP\Solver\tp_yaluk.exe")
@@ -49,7 +51,9 @@ def run_atp_solver(
     executable = resolve_solver_executable(solver_path)
     input_file = Path(input_file).resolve()
     executable_parent = (
-        executable.resolve().parent if executable.exists() else executable.parent.resolve()
+        executable.resolve().parent
+        if executable.exists()
+        else executable.parent.resolve()
     )
     cwd = Path(solver_cwd).resolve() if solver_cwd is not None else input_file.parent
     if os.name == "nt" and cwd == executable_parent:
@@ -76,7 +80,7 @@ def run_atp_solver(
         env.setdefault("ATPDIR", solver_dir)
         env.setdefault("GNUDIR", solver_dir)
 
-    if os.name == "nt" and cwd != executable_parent:
+    if cwd != executable_parent:
         for runtime_file in ATP_RUNTIME_FILES:
             source = executable_parent / runtime_file
             target = cwd / runtime_file

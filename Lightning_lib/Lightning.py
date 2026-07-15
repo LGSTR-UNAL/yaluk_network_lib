@@ -1,6 +1,7 @@
 from enum import Enum
+from io import BytesIO
 import os
-from Network_lib.GeoTransform import PointLatLng, PointXY, CoordTransf
+from yaluk_network_lib.Network_lib.GeoTransform import PointLatLng, PointXY, CoordTransf
 
 
 class Current_Waveform(Enum):
@@ -9,7 +10,8 @@ class Current_Waveform(Enum):
 
 
 class Lightning:
-    def __init__(self):
+    def __init__(self, case: int = 0):
+        self.case = case
         # Location
         self.geo_transformer: CoordTransf = CoordTransf()
         self.Location_x: float = 0.0
@@ -108,3 +110,68 @@ class Lightning:
             file.write(f"{self.Y_location}   % Posición en Y del Rayo..........Y0\n")
 
         return 0
+
+    def MakeLightningBuffer(self, i: int) -> BytesIO:
+
+        buffer = BytesIO()
+
+        buffer.write(
+            bytes(
+                f"{self.Ih1:0.00E}   % Magnitud Corriente 1era funcion Heidler.....Ih1\n",
+                "utf-8",
+            )
+        )
+        buffer.write(
+            bytes(
+                f"{self.Ih2:0.00E}   % Magnitud Corriente 2da funcion Heidler.....Ih2\n",
+                "utf-8",
+            )
+        )
+        buffer.write(
+            bytes(
+                f"{self.tf1:0.00E}   % tiempo de Frente 1era Funcion Heidler.......tao11\n",
+                "utf-8",
+            )
+        )
+        buffer.write(
+            bytes(
+                f"{self.tc1:0.00E}   % Tiempo de Cola 1era Funcion Heidler.........tao21\n",
+                "utf-8",
+            )
+        )
+        buffer.write(
+            bytes(
+                f"{self.tf2:0.00E}   % Tiempo de Frente 2da Funcion Heidler........tao12\n",
+                "utf-8",
+            )
+        )
+        buffer.write(
+            bytes(
+                f"{self.tc2:0.00E}   % Tiempo de Cola 2da Funcion Heidler..........tao22\n",
+                "utf-8",
+            )
+        )
+        buffer.write(
+            bytes(
+                f"{self.n1:0.00E}   % Constante 1era funcion Heidler..............n1\n",
+                "utf-8",
+            )
+        )
+        buffer.write(
+            bytes(
+                f"{self.n2}   % Constante 2da funcion Heidler..............n2\n",
+                "utf-8",
+            )
+        )
+        buffer.write(
+            bytes(
+                f"{self.X_location}   % Posición en X del Rayo..........X0\n", "utf-8"
+            )
+        )
+        buffer.write(
+            bytes(
+                f"{self.Y_location}   % Posición en Y del Rayo..........Y0\n", "utf-8"
+            )
+        )
+
+        return buffer

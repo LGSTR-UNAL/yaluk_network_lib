@@ -40,13 +40,18 @@ class Line(IdentifyObject):
         self.Line_Config = value
         self.Phases_connected.clear()
         for i in range(value.Num_conductors):
-            ph = (
-                PhaseName.A
-                if i == 0
-                else (
-                    PhaseName.B if i == 1 else (PhaseName.C if i == 2 else PhaseName.N)
-                )
-            )
+            match  i:
+                case 0:
+                    ph=PhaseName.A
+                case 1:
+                    ph=PhaseName.B
+                case 2: 
+                    ph=PhaseName.C
+                case 3:
+                    ph=PhaseName.N
+                case 4:
+                    ph=PhaseName.M
+
             self.Phases_connected.append(ph)
             if self.Node_i and ph.value not in self.Node_i.Phases_id:
                 self.Node_i.Phases_id.append(ph.value)

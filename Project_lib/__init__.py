@@ -1,10 +1,7 @@
 # network_library package
-from .YalukProject import YalukProject
 from .Settings import (
     Current_model,
     SimulationSettings,
-    StrokeSettings,
-    ATPSettings,
     ProjectSettings,
 )
 from .proj_functions import (
@@ -15,12 +12,9 @@ from .proj_functions import (
 )
 
 __all__ = [
-    "YalukProject",
     "Settings",
     "Current_model",
     "SimulationSettings",
-    "StrokeSettings",
-    "ATPSettings",
     "ProjectSettings",
     "write_yaluk_init_file",
     "create_project_files",

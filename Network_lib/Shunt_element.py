@@ -13,6 +13,7 @@ class lumped_element:
     def Capacitance(self): return self._cap*1e6
     @Capacitance.setter
     def Capacitance(self,v): self._cap=v
+
 class Shunt_lump(IShunt_element):
     def __init__(self, E: Optional[lumped_element]=None, Ni=None, P: Optional[PhaseName]=None):
         self.Node = Ni; self.SolidGrounded=True; self.Phases_connected=[]; self.Lumped_elements=[]

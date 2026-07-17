@@ -1,8 +1,8 @@
-import Network_lib as nl
+import yaluk_network_lib.Network_lib as nl
 import pandas as pd
-import Lightning_lib.Lightning_stat as lightning_stat
+import yaluk_network_lib.Lightning_lib.Lightning_stat as lightning_stat
 
-from Network_lib.Node import PhaseName
+from yaluk_network_lib.Network_lib.Node import PhaseName
 class Trf_parameters():
         def __init__(self,A,B,C,D):
             self.CapHV=A

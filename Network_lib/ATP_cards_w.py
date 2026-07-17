@@ -127,6 +127,7 @@ def write_branches(write, self):
                     f"{Linea.Configuration.Zc[i, 0]:06.1f}"
                 )
 
+
                 for j in range(1, i + 1):
                     test_line = (j + 1) % 3
 
@@ -137,6 +138,11 @@ def write_branches(write, self):
                         write(f"{'':12}" f"{Linea.Configuration.Zc[i, j]:06.1f}")
 
                 write("\n")
+                if Linea.Configuration.Num_conductors >4:
+                    write(f"  N{Linea.Node_i.idx:04d}{PhaseName.N.value}"
+                        f"N{Linea.Node_i.idx:04d}{PhaseName.M.value}"
+                        f"            {1e-6:6.1f}                                               0\n")
+
 
             for i in range(Linea.Configuration.Num_conductors):
                 DevNum = f"5{(i+1)}"
@@ -160,6 +166,10 @@ def write_branches(write, self):
                         write(f"{'':12}" f"{Linea.Configuration.Zc[i, j]:06.1f}")
 
                 write("\n")
+                if Linea.Configuration.Num_conductors >4:
+                    write(f"  N{Linea.Node_j.idx:04d}{PhaseName.N.value}"
+                        f"N{Linea.Node_j.idx:04d}{PhaseName.M.value}"
+                        f"            {1e-6:6.1f}                                               0\n")
     # writing lumped elements
 
     for E in self.Shunt_elements:

@@ -1,4 +1,6 @@
 from typing import Optional, List
+
+from Network_lib.Shunt_element import lumped_element
 from .Node import PhaseName, Node, PointLatLng
 from .Configuration_Type import Configuration_Type
 import numpy as np
@@ -57,6 +59,8 @@ class Line(IdentifyObject):
                 self.Node_i.Phases_id.append(ph.value)
             if self.Node_j and ph.value not in self.Node_j.Phases_id:
                 self.Node_j.Phases_id.append(ph.value)
+            
+            
 
     def Dist2line(self, X0,Y0) -> float:
         # Placeholder for distance calculation from a point to the line

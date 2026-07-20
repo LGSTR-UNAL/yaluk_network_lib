@@ -34,7 +34,7 @@ def write_misc_file(pr_settings, network, buffer=False):
             f"{pr_settings.Soil_settings.Permitivity:0.00E} % Permitividad del terreno e [p.u]\n".encode()
         )
         misc_file.write(
-            f"{pr_settings.Sim_settings.Dx:0.00E} % Espaciamiento en distancia dx(s / m)\n".encode()
+            f"{pr_settings.Sim_settings.Dx:g} % Espaciamiento en distancia dx(s / m)\n".encode()
         )
         misc_file.write(
             f"{int(pr_settings.Sim_settings.Typewaveform)} % Onda triangular o(s / m)\n".encode()

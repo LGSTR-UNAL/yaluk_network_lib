@@ -2,6 +2,7 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import math
 from .plotylk import plot_lightnings, plot_lines, plot_nodes
 
 
@@ -45,14 +46,21 @@ def plot_exceedance_across_nodes(df, threshold, line_name, savefig=False):
 
     sns.set_theme(style="whitegrid", context="talk")
 
-    plt.figure(figsize=(20, 6))
-    ax = sns.barplot(data=result_df, x="Nodo", y="Conteo de Eventos", color="#a8063c")
-    # palette="deep" "Blues", "Blues_d", "BuGn", "GnBu", "OrRd", "Purples", "Greens"
+    # Alto dinámico: más espacio por barra ya que ahora se muestran TODAS las etiquetas
+    fig_height = max(6, len(result_df) * 0.35)
+    plt.figure(figsize=(10, fig_height))
 
-    # Formateando eje x
+    ax = sns.barplot(
+        data=result_df,
+        y="Nodo",
+        x="Conteo de Eventos",
+        color="#a8063c",
+    )
+
+    # Formateando eje y (ahora las categorías están aquí)
 
     # 1) Tomar las etiquetas originales que Seaborn puso
-    labels = [t.get_text() for t in ax.get_xticklabels()]
+    labels = [t.get_text() for t in ax.get_yticklabels()]
 
     # 2) Truncar a 8 caracteres (agregando "…" si excede)
     def trunc8(s):
@@ -61,20 +69,16 @@ def plot_exceedance_across_nodes(df, threshold, line_name, savefig=False):
 
     trunc_labels = [trunc8(s) for s in labels]
 
-    # 3) Mostrar solo cada 3er valor en el eje X
-    positions = list(range(0, len(trunc_labels), 3))
-    ax.set_xticks(positions)
-    ax.set_xticklabels(
-        [trunc_labels[i] for i in positions], rotation=90, ha="right", size=10
-    )
+    # 3) Mostrar TODAS las etiquetas
+    ax.set_yticklabels(trunc_labels, size=9)
 
     plt.title(f"Eventos que superan valor de {threshold} kV - {line_name}")
-    # plt.xticks(rotation=45)
     plt.tight_layout()
-    plt.show()
 
     if savefig:
         plt.savefig(f"{line_name}_exceedance.png", dpi=300, bbox_inches="tight")
+
+    plt.show()
 
     return result_df
 

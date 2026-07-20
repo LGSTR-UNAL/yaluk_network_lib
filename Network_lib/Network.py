@@ -65,7 +65,7 @@ class Network(IdentifyObject):
         self.Shunt_elements = []
         self.SurgeArresters = []
         self.Tmax = 60e-6
-        self.Dt = 3e-8
+        self.Dt = 2e-8
         self.Dx = 10.0
         self.Dmax_induction = 0.0
         self.xmax = None

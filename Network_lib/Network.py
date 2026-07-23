@@ -188,9 +188,10 @@ class Network(IdentifyObject):
         Linea.Node_i = Node_i
         Linea.Node_j = Node_j
         Linea.Configuration = C_type
-        if len(Linea.Phases_connected) > 3:
-            for ii in range(3, len(Linea.Phases_connected)):
-                Linea.Phases_connected[ii] = PhaseName.N
+        # NOTA: Phases_connected ya lo asigna el setter de Configuration en Line.py
+        # (A,B,C,N,M según Num_conductors). No sobreescribir aquí: el bucle antiguo
+        # forzaba a N todos los conductores desde el índice 3, colapsando la fase M
+        # del 5.º conductor a N y duplicando el neutro.
         h = self.Lines.Find(
             lambda L: (
                 (L.Node_i == Linea.Node_i and L.Node_j == Linea.Node_j)

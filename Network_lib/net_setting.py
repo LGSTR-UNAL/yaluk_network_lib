@@ -6,6 +6,19 @@ from os import PathLike
 from pathlib import Path
 
 
+def build_conductors_db(Cables: pd.DataFrame) -> dict:
+    """Build a dict of Conductor objects keyed by Cables['id']."""
+    conductors_db = {}
+    for _, row in Cables.iterrows():
+        conductor = nl.Conductor()
+        conductor.Radio = row['radio']
+        conductor.Resistance = row['resistance']
+        conductor.Name = row['label']
+        conductor.Description = row['description']
+        conductors_db[row['id']] = conductor
+    return conductors_db
+
+
 def _read_network_csv(csv_file: str | PathLike[str], label: str) -> pd.DataFrame:
     """Read a network CSV from a normalized and validated path."""
     if not isinstance(csv_file, (str, PathLike)):
@@ -89,14 +102,7 @@ def network_setting(
     net.InitXY=initxy
     
     # Creating conductors database
-    Conductors_db={}
-    for i, row in Cables.iterrows():
-        conductor = nl.Conductor()
-        conductor.Radio = row['radio']
-        conductor.Resistance = row['resistance']
-        conductor.Name = row['label']
-        conductor.Description = row['description']
-        Conductors_db[row['id']] = conductor
+    Conductors_db = build_conductors_db(Cables)
 
     #creating line configurations database
     import ast

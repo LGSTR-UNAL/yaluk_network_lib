@@ -82,7 +82,7 @@ def test_network_setting_wires_catalog_into_lines():
         {"id": 2, "label": "N2", "x": 1050.0, "y": 2000.0},
     ])
     Lines = pd.DataFrame([
-        {"id": 1, "label": "L1", "from_node": 1, "to_node": 2, "configuration_type": "R-580"},
+        {"id": 1, "label": "L1", "from_node": "N1", "to_node": "N2", "configuration_type": "R-580"},
     ])
     Transformers = pd.DataFrame(columns=["id", "label", "from_node", "phases", "trf_type"])
     Surge_Arresters = pd.DataFrame(columns=["id", "label", "node", "phases", "file"])

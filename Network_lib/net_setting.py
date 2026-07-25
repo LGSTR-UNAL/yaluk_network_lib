@@ -149,15 +149,10 @@ def network_setting(
     for n in Nodes.itertuples():
        net.AddNode(n.x, n.y,Nodeidx=n.id,ctype="abs", label=n.label)  #You can use also ctype="rel" if you want to add nodes using coordinates relative to the initial location
 
-    # Create a mapping from node ID to node label for lookup
-    node_id_to_label = {row['id']: row['label'] for _, row in Nodes.iterrows()}
-
     # Add lines
     for l in Lines.itertuples():
-        from_node_label = node_id_to_label[l.from_node]
-        to_node_label = node_id_to_label[l.to_node]
-        from_node = net.Nodes.GetByName(from_node_label)
-        to_node = net.Nodes.GetByName(to_node_label)
+        from_node = net.Nodes.GetByName(l.from_node)
+        to_node = net.Nodes.GetByName(l.to_node)
         config_type=Configurations_db[l.configuration_type]
         net.AddLine(from_node, to_node, config_type)
     for li in net.Lines:

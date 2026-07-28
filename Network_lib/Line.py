@@ -1,6 +1,6 @@
 from typing import Optional, List
 
-from Network_lib.Shunt_element import lumped_element
+from .Shunt_element import lumped_element
 from .Node import PhaseName, Node, PointLatLng
 from .Configuration_Type import Configuration_Type
 import numpy as np

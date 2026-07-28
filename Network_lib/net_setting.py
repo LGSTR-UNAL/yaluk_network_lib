@@ -1,9 +1,61 @@
 # Función para crear la red a partir de los datos definidos en los DataFrames
 from yaluk_network_lib import Network_lib as nl
 import pandas as pd
+import ast
 #Función para crear la red a partir de datos definidos en archivos csv
 from os import PathLike
 from pathlib import Path
+
+
+def build_conductors_db(Cables: pd.DataFrame) -> dict:
+    """Build a dict of Conductor objects keyed by Cables['id']."""
+    conductors_db = {}
+    for _, row in Cables.iterrows():
+        conductor = nl.Conductor()
+        conductor.Radio = row['radio']
+        conductor.Resistance = row['resistance']
+        conductor.Name = row['label']
+        conductor.Description = row['description']
+        conductors_db[row['id']] = conductor
+    return conductors_db
+
+
+def build_configurations_db(Config_types: pd.DataFrame, Conductors_db: dict) -> dict:
+    """Build a dict of Configuration_Type objects keyed by Config_types['id'].
+
+    Geometry is a Python literal list of (conductor_id, height, x_pos) tuples,
+    e.g. "[('COND_4_0', 12, 2), ('COND_4_0', 12, 0)]".
+    """
+    configurations_db = {}
+    for _, row in Config_types.iterrows():
+        config = nl.Configuration_Type()
+        config.id = row['id']
+        config.Name = row['name']
+        config.Description = row['description']
+        try:
+            geometry = ast.literal_eval(row['Geometry'])
+        except (ValueError, SyntaxError) as exc:
+            raise ValueError(
+                f"Config_types row '{row['id']}': Geometry is not a valid Python "
+                f"literal: {row['Geometry']!r}"
+            ) from exc
+        for conductor_info in geometry:
+            if len(conductor_info) != 3:
+                raise ValueError(
+                    f"Config_types row '{row['id']}': invalid geometry entry "
+                    f"{conductor_info!r}, expected (conductor_id, height, x_pos)"
+                )
+            conductor_id, height, x_pos = conductor_info
+            if conductor_id not in Conductors_db:
+                raise ValueError(
+                    f"Config_types row '{row['id']}' references unknown "
+                    f"conductor_id '{conductor_id}' (not present in Cables)"
+                )
+            conductor = Conductors_db[conductor_id]
+            config.Add_conductor(conductor, height, x_pos)
+        config.gen_parameters()
+        configurations_db[row['id']] = config
+    return configurations_db
 
 
 def _read_network_csv(csv_file: str | PathLike[str], label: str) -> pd.DataFrame:
@@ -89,36 +141,14 @@ def network_setting(
     net.InitXY=initxy
     
     # Creating conductors database
-    Conductors_db={}
-    for i, row in Cables.iterrows():
-        conductor = nl.Conductor()
-        conductor.Radio = row['radio']
-        conductor.Resistance = row['resistance']
-        conductor.Name = row['label']
-        conductor.Description = row['description']
-        Conductors_db[row['id']] = conductor
+    Conductors_db = build_conductors_db(Cables)
 
-    #creating line configurations database
-    import ast
-    Configurations_db={}
-    for i, row in Config_types.iterrows():
-        config = nl.Configuration_Type()
-        config.id = row['id']
-        config.Name = row['name']
-        config.Description = row['description']
-        geometry = ast.literal_eval(row['Geometry'])
-        for conductor_info in geometry:
-            if len(conductor_info) != 3:
-                raise ValueError(f"Invalid geometry entry: {conductor_info}")
-            conductor_id, x, y = conductor_info
-            conductor = Conductors_db[conductor_id]
-            config.Add_conductor(conductor, x, y)
-        config.gen_parameters()
-        Configurations_db[row['id']] = config
+    # Creating line configurations database
+    Configurations_db = build_configurations_db(Config_types, Conductors_db)
 
     for n in Nodes.itertuples():
        net.AddNode(n.x, n.y,Nodeidx=n.id,ctype="abs", label=n.label)  #You can use also ctype="rel" if you want to add nodes using coordinates relative to the initial location
-    
+
     # Add lines
     for l in Lines.itertuples():
         from_node = net.Nodes.GetByName(l.from_node)

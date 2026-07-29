@@ -23,6 +23,7 @@ class SimulationSettings:
         self.Permitivity=10.0
         self.Typewaveform=1 #1: Heidler, 2: Triangular, 3: Ramp
         self.MaxDistCamp=10000.0
+        self.MinLineLength=90.0  # [m] longitud minima de segmento de linea (modelo de onda viajera)
         self.Perfectsoil = False
         self.Print_field_info = False
         self.Print_field=False

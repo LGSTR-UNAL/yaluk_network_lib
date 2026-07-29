@@ -37,6 +37,22 @@ if TYPE_CHECKING:
     from Lightning_lib.Lightning import Lightning
 
 
+_SPEED_OF_LIGHT = 3e8  # [m/s]
+_DEFAULT_CHANNEL_VELOCITY = 2.0 / 3.0 * 3e8  # [m/s] == LightningChannel().Velocity por default
+_DEFAULT_BETA = _DEFAULT_CHANNEL_VELOCITY / _SPEED_OF_LIGHT
+# Formula de Rusck (ESTIMACION de tension inducida maxima por impacto
+# indirecto -- no decide impacto directo, eso es Line.check_direct_strike):
+# el termino beta/sqrt(1-beta**2) es la dependencia estandar con la
+# velocidad de retorno. _RUSCK_K se calibra para que, a la velocidad default
+# (2/3 c), el resultado sea IDENTICO al valor hardcodeado historico
+# (1.2958 * 30) -- no rompe corridas existentes.
+# ADVERTENCIA: _RUSCK_K en si no esta validado contra una referencia
+# bibliografica de Rusck, solo reproduce el numero que ya se usaba. Confirmar
+# con quien tenga la derivacion original antes de confiar en el resultado
+# para velocidades muy distintas al default.
+_RUSCK_K = (1.2958 * 30) / (_DEFAULT_BETA / math.sqrt(1 - _DEFAULT_BETA**2))
+
+
 @dataclass
 class Network(IdentifyObject):
     xmax: float | None = 0.0
@@ -79,6 +95,7 @@ class Network(IdentifyObject):
         self.line_ds = None  # ID of the line with direct strike, if any
         self.Vrusck_max = 0.0  # [m] Maximum Rusck voltage calculated for the network based on the distance to the lines and the maximum current
         self.min_distance = 1e15  # [m] Minimum distance from the strike point to the lines in the network
+        self.Channel_settings = None  # LightningChannel opcional; default si no se setea (ver check_direct_strike)
 
     def update_limits(self, x: float, y: float):
         if self.xmax is None or x > self.xmax:
@@ -559,6 +576,10 @@ class Network(IdentifyObject):
         :type MemSave: int
         :param ExtrPinOut: Extra print output option for ATP file generation. To be implemented in future versions. If 1, extra print output will be included in the .lis file. If 0, no extra print output will be included.
         :type ExtrPinOut: int
+        :param Tmax: Simulation end time for the ATP run, in seconds. Default is 60e-6.
+        :type Tmax: float
+        :param Dt: Simulation time step for the ATP run, in seconds. Default is 2e-8.
+        :type Dt: float
         """
 
         printfreq: int = 999999
@@ -569,6 +590,8 @@ class Network(IdentifyObject):
         MaxMinOut: int = 1
         MemSave: int = 0
         ExtrPinOut: int = 0
+        Tmax: float = 60e-6
+        Dt: float = 2e-8
 
     def MakeATPBuffer(
         self,
@@ -1031,7 +1054,11 @@ class Network(IdentifyObject):
         :param X: X coordinate of the lightning strike point
         :param Y: Y coordinate of the lightning strike point
         :param Imax: Maximum current of the lightning strike
-        :param threshold_distance: Threshold distance for considering lines for FDTD simulation
+        :param threshold_distance: Distancia de corte para decidir el modelo de linea:
+            <= threshold_distance -> FDTD (onda viajera); mayor -> LCC (parametros
+            concentrados). NO participa en la decision de impacto directo/indirecto
+            (esa la decide Line.check_direct_strike via los radios Rs/Rg) ni en el
+            calculo de Vrusck (ver mas abajo).
         :return: direct_strike (bool), Vrusck_max (float), min_distance (float), line_name (str)
         """
         self.direct_strike = False
@@ -1055,7 +1082,14 @@ class Network(IdentifyObject):
                 return self.direct_strike, self.Vrusck_max, self.min_distance, line_name
             else:
                 hm = line.Configuration.get_max_height()
-                Vrusck = 1.2958 * 30 * Imax / 1e3 * hm / distance
+                velocity = (
+                    self.Channel_settings.Velocity
+                    if self.Channel_settings is not None
+                    else _DEFAULT_CHANNEL_VELOCITY
+                )
+                beta = velocity / _SPEED_OF_LIGHT
+                beta_factor = beta / math.sqrt(1 - beta**2)
+                Vrusck = _RUSCK_K * beta_factor * Imax / 1e3 * hm / distance
                 self.Vrusck_max = max(self.Vrusck_max, Vrusck)
                 if distance < self.min_distance:
                     self.line_ds = line

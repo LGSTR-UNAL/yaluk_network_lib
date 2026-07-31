@@ -1066,8 +1066,10 @@ class Network(IdentifyObject):
         line_name = None
         self.Vrusck_max = 0
         self.min_distance = 9999999
+
         if threshold_distance <= 100:
             threshold_distance = 9999999  # [m] if the threshold distance is not specified or is too small, we consider all lines for FDTD
+
         for line in self.Lines:
             ds, distance = line.check_direct_strike(X, Y, Imax)
             if ds:
@@ -1093,6 +1095,7 @@ class Network(IdentifyObject):
                 self.Vrusck_max = max(self.Vrusck_max, Vrusck)
                 if distance < self.min_distance:
                     self.line_ds = line
+                    line_name = line.id
                 self.min_distance = min(self.min_distance, distance)
                 # Checking if the line is within the threshold distance
                 if distance <= threshold_distance:

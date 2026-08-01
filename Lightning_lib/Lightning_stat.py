@@ -135,31 +135,13 @@ class Lightning_stat:
 
             if Ix > 20:
                 Ix = Ix2.ppf(Xrnd)
-                Std_I = self.std_dev_I2
-                Mean_I = Ix2.median()
-            else:
-                Std_I = self.std_dev_I1
-                Mean_I = Ix1.median()
 
             Li.Ih1 = Ix
             Li.tc1 = self.tc
             Li.n1 = self.n1
             Li.Decay_time = self.tc
 
-            Xtf = math.log(
-                self.Mean_tf
-            ) + self.tf_correlation * self.std_dev_tf / Std_I * (
-                math.log(Ix) - math.log(Mean_I)
-            )
-
-            Std_tf = self.std_dev_tf * math.sqrt(1 - self.tf_correlation**2)
-
-            Tf_dist = lognorm(s=Std_tf, scale=math.exp(Xtf))
-            Li.Front_time = Tf_dist.ppf(rng.random()) * 1e-6
-
-            Li.tf1 = (Li.Front_time ** (self.n1 + 1) / (self.n1 * self.tc)) ** (
-                1 / self.n1
-            )
+            Li.Front_time, Li.tf1 = self._impute_front_time(Ix)
 
             Li.Ih1 *= 1000
             Li.Magnitude = Li.Ih1
@@ -174,6 +156,34 @@ class Lightning_stat:
             self.Lightnings.append(Li)
 
         return 0
+
+    def _impute_front_time(self, Ix_kA: float):
+        """Imputa Front_time y tf1 por correlacion lognormal con la magnitud
+        (misma formula que usaba GenStatCurrents inline). `Ix_kA` es la
+        corriente en kA (magnitud, antes de escalar a A). Reutilizado por
+        GenStatCurrents (corriente muestreada) y por LoadFromDatabase
+        (corriente real de un LLS)."""
+        if Ix_kA > 20:
+            Std_I = self.std_dev_I2
+            Mean_I = lognorm(
+                s=self.std_dev_I2, scale=math.exp(math.log(self.Mean_Ip_2))
+            ).median()
+        else:
+            Std_I = self.std_dev_I1
+            Mean_I = lognorm(
+                s=self.std_dev_I1, scale=math.exp(math.log(self.Mean_Ip_1))
+            ).median()
+
+        Xtf = math.log(
+            self.Mean_tf
+        ) + self.tf_correlation * self.std_dev_tf / Std_I * (
+            math.log(Ix_kA) - math.log(Mean_I)
+        )
+        Std_tf = self.std_dev_tf * math.sqrt(1 - self.tf_correlation**2)
+        Tf_dist = lognorm(s=Std_tf, scale=math.exp(Xtf))
+        Front_time = Tf_dist.ppf(self._rng.random()) * 1e-6
+        tf1 = (Front_time ** (self.n1 + 1) / (self.n1 * self.tc)) ** (1 / self.n1)
+        return Front_time, tf1
 
     # ---------------------------------------------------------
     # Spatial sampling

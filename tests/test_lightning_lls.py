@@ -100,15 +100,10 @@ def test_load_from_database_filtra_por_corredor():
     def latlon_for_xy(x_rel, y_rel):
         # inverso de to_projected, para fabricar filas LLS en una posicion XY
         # relativa conocida (dentro/fuera del corredor de 1 km default).
-        # NOTA: CoordTransf.to_geographic() tiene un bug real (devuelve
-        # (lon,lat) pero lo etiqueta lat,lon) -- se corrige aqui con un swap
-        # explicito para no depender del bug en el fixture del test; el bug
-        # en si no lo usa LoadFromDatabase (solo to_projected) y queda
-        # reportado aparte, fuera de este plan.
         x_abs = x_rel + net.InitXY.X
         y_abs = y_rel + net.InitXY.Y
-        raw_lon, raw_lat = transf.to_geographic(x_abs, y_abs)
-        return raw_lat, raw_lon
+        lat, lon = transf.to_geographic(x_abs, y_abs)
+        return lat, lon
 
     lat_dentro, lon_dentro = latlon_for_xy(500.0, 100.0)   # a 100 m de la linea -> dentro (<=1000)
     lat_fuera, lon_fuera = latlon_for_xy(500.0, 5000.0)    # a 5000 m -> fuera del corredor
@@ -133,7 +128,7 @@ def test_load_from_database_descarta_filas_invalidas():
     from yaluk_network_lib.Network_lib.GeoTransform import CoordTransf
     transf = CoordTransf()
     x_abs, y_abs = 500.0 + net.InitXY.X, 100.0 + net.InitXY.Y
-    lon_ok, lat_ok = transf.to_geographic(x_abs, y_abs)  # to_geographic invertido, ver nota arriba
+    lat_ok, lon_ok = transf.to_geographic(x_abs, y_abs)
 
     buf = io.BytesIO((
         "lat,lon,current_kA,timestamp\n"
@@ -154,7 +149,7 @@ def test_load_from_database_descarta_filas_con_nan():
     from yaluk_network_lib.Network_lib.GeoTransform import CoordTransf
     transf = CoordTransf()
     x_abs, y_abs = 500.0 + net.InitXY.X, 100.0 + net.InitXY.Y
-    lon_ok, lat_ok = transf.to_geographic(x_abs, y_abs)
+    lat_ok, lon_ok = transf.to_geographic(x_abs, y_abs)
 
     buf = io.BytesIO((
         "lat,lon,current_kA,timestamp\n"
@@ -171,7 +166,7 @@ def test_load_from_database_cero_rayos_en_corredor_lanza_valueerror():
     from yaluk_network_lib.Network_lib.GeoTransform import CoordTransf
     transf = CoordTransf()
     x_abs, y_abs = 500.0 + net.InitXY.X, 50000.0 + net.InitXY.Y  # muy lejos
-    lon_lejos, lat_lejos = transf.to_geographic(x_abs, y_abs)  # to_geographic invertido, ver nota arriba
+    lat_lejos, lon_lejos = transf.to_geographic(x_abs, y_abs)
 
     buf = _csv_lls([(lat_lejos, lon_lejos, 25.0, "2026-01-01T00:00:00Z")])
     with pytest.raises(ValueError, match="cero rayos"):

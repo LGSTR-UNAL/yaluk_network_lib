@@ -30,7 +30,7 @@ class CoordTransf:
         """
         Convert x/y → lat/lon
         """
-        lat, lon = self._transformer.transform(x, y, direction="INVERSE")
+        lon, lat = self._transformer.transform(x, y, direction="INVERSE")
         return lat, lon
 class PointLatLng:
     Lat: float = 0.0

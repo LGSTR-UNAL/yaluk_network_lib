@@ -70,3 +70,89 @@ def test_impute_front_time_rama_corriente_alta():
     front_time, tf1 = ls_obj._impute_front_time(35.0)
     assert front_time > 0
     assert tf1 > 0
+
+
+def test_coordtransf_conversion_relativa_a_initxy():
+    from yaluk_network_lib.Network_lib.GeoTransform import CoordTransf
+
+    # Network() SIN override de InitXY: InitXY se calcula proyectando
+    # InitLatLong (Network.py:74-77) -> proyectar ese mismo punto debe dar
+    # exactamente (InitXY.X, InitXY.Y).
+    net = nl.Network()
+    transf = CoordTransf()
+    xp, yp = transf.to_projected(net.InitLatLong.Lat, net.InitLatLong.Lng)
+    assert xp == pytest.approx(net.InitXY.X, abs=1e-6)
+    assert yp == pytest.approx(net.InitXY.Y, abs=1e-6)
+
+
+def _csv_lls(rows):
+    lines = ["lat,lon,current_kA,timestamp"]
+    for r in rows:
+        lines.append(",".join(str(v) for v in r))
+    return io.BytesIO(("\n".join(lines) + "\n").encode())
+
+
+def test_load_from_database_filtra_por_corredor():
+    net = _net_dos_nodos()  # linea (0,0)-(1000,0), InitLatLong = Network() default
+    from yaluk_network_lib.Network_lib.GeoTransform import CoordTransf
+    transf = CoordTransf()
+
+    def latlon_for_xy(x_rel, y_rel):
+        # inverso de to_projected, para fabricar filas LLS en una posicion XY
+        # relativa conocida (dentro/fuera del corredor de 1 km default).
+        # NOTA: CoordTransf.to_geographic() tiene un bug real (devuelve
+        # (lon,lat) pero lo etiqueta lat,lon) -- se corrige aqui con un swap
+        # explicito para no depender del bug en el fixture del test; el bug
+        # en si no lo usa LoadFromDatabase (solo to_projected) y queda
+        # reportado aparte, fuera de este plan.
+        x_abs = x_rel + net.InitXY.X
+        y_abs = y_rel + net.InitXY.Y
+        raw_lon, raw_lat = transf.to_geographic(x_abs, y_abs)
+        return raw_lat, raw_lon
+
+    lat_dentro, lon_dentro = latlon_for_xy(500.0, 100.0)   # a 100 m de la linea -> dentro (<=1000)
+    lat_fuera, lon_fuera = latlon_for_xy(500.0, 5000.0)    # a 5000 m -> fuera del corredor
+
+    buf = _csv_lls([
+        (lat_dentro, lon_dentro, 25.3, "2026-01-01T00:00:00Z"),
+        (lat_fuera, lon_fuera, 40.0, "2026-01-01T00:01:00Z"),
+    ])
+
+    ls_obj = Lightning_stat(net, M="Database", database_buffer=buf)
+    assert len(ls_obj.Lightnings) == 1
+    Li = ls_obj.Lightnings[0]
+    assert Li.Ih1 == pytest.approx(25.3 * 1000)
+    assert Li.X_location == pytest.approx(500.0, abs=1.0)
+    assert Li.Y_location == pytest.approx(100.0, abs=1.0)
+    assert Li.tf1 > 0
+    assert Li.Front_time > 0
+
+
+def test_load_from_database_descarta_filas_invalidas():
+    net = _net_dos_nodos()
+    from yaluk_network_lib.Network_lib.GeoTransform import CoordTransf
+    transf = CoordTransf()
+    x_abs, y_abs = 500.0 + net.InitXY.X, 100.0 + net.InitXY.Y
+    lon_ok, lat_ok = transf.to_geographic(x_abs, y_abs)  # to_geographic invertido, ver nota arriba
+
+    buf = io.BytesIO((
+        "lat,lon,current_kA,timestamp\n"
+        f"{lat_ok},{lon_ok},18.0,2026-01-01T00:00:00Z\n"
+        "not_a_number,also_bad,0,2026-01-01T00:01:00Z\n"
+        f"{lat_ok},{lon_ok},0,2026-01-01T00:02:00Z\n"
+    ).encode())
+
+    ls_obj = Lightning_stat(net, M="Database", database_buffer=buf)
+    assert len(ls_obj.Lightnings) == 1  # las otras 2 filas se descartan
+
+
+def test_load_from_database_cero_rayos_en_corredor_lanza_valueerror():
+    net = _net_dos_nodos()
+    from yaluk_network_lib.Network_lib.GeoTransform import CoordTransf
+    transf = CoordTransf()
+    x_abs, y_abs = 500.0 + net.InitXY.X, 50000.0 + net.InitXY.Y  # muy lejos
+    lon_lejos, lat_lejos = transf.to_geographic(x_abs, y_abs)  # to_geographic invertido, ver nota arriba
+
+    buf = _csv_lls([(lat_lejos, lon_lejos, 25.0, "2026-01-01T00:00:00Z")])
+    with pytest.raises(ValueError, match="cero rayos"):
+        Lightning_stat(net, M="Database", database_buffer=buf)

@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, List
 import numpy as np
 from scipy.stats import lognorm
 
-from yaluk_network_lib.Network_lib.GeoTransform import PointLatLng, PointXY
+from yaluk_network_lib.Network_lib.GeoTransform import CoordTransf, PointLatLng, PointXY
 
 from .Lightning import Lightning
 from .Lightning import Current_Waveform
@@ -43,6 +43,7 @@ class Lightning_stat:
         sampling: str = "buffer_reject",
         buffer_radius: float = 1000.0,
         max_tries: int = 50000,
+        database_buffer=None,
     ):
 
         self.Model: StatI_ModelType = M
@@ -100,18 +101,20 @@ class Lightning_stat:
 
         # Lightning database
         self.Lightnings: List[Lightning] = []
-        bbox_area = (self.Xmax - self.Xmin) * (self.Ymax - self.Ymin)
         if M == "ProbDistribution":
             self.GenStatCurrents()
-            # sampling="bbox" es el modo legacy: el area sigue siendo la del
-            # rectangulo, no la del corredor (los puntos SI cubren todo el bbox)
-            self.Area: float = (
-                bbox_area if self.sampling == "bbox" else self._compute_buffer_area()
-            )
             self.check_direct_strike(net)
-        else:
-            self.Lightnings = []
-            self.Area: float = bbox_area
+        elif M == "Database":
+            self.LoadFromDatabase(database_buffer)
+            self.check_direct_strike(net)
+
+        # sampling="bbox" es el modo legacy: el area sigue siendo la del
+        # rectangulo, no la del corredor (los puntos SI cubren todo el bbox).
+        # M distinto de ProbDistribution/Database (stub futuro) tampoco corre
+        # sobre el corredor, asi que tambien usa el area del rectangulo.
+        bbox_area = (self.Xmax - self.Xmin) * (self.Ymax - self.Ymin)
+        uses_corridor = M in ("ProbDistribution", "Database") and self.sampling != "bbox"
+        self.Area: float = self._compute_buffer_area() if uses_corridor else bbox_area
 
     # ---------------------------------------------------------
     # Statistical lightning generation
@@ -184,6 +187,64 @@ class Lightning_stat:
         Front_time = Tf_dist.ppf(self._rng.random()) * 1e-6
         tf1 = (Front_time ** (self.n1 + 1) / (self.n1 * self.tc)) ** (1 / self.n1)
         return Front_time, tf1
+
+    # ---------------------------------------------------------
+    # Real lightning ingestion (LLS)
+    # ---------------------------------------------------------
+    def LoadFromDatabase(self, buffer) -> int:
+        """Carga rayos reales desde un CSV de un sistema de localizacion de
+        rayos (LLS): columnas lat, lon, current_kA, timestamp. Filtra
+        espacialmente por el mismo corredor que usa el modo estadistico
+        (`_min_dist_to_lines(x,y) <= self.buffer_radius`) e imputa
+        Front_time/tf1 con la misma correlacion que GenStatCurrents, usando
+        la corriente real de cada evento."""
+        import pandas as pd
+
+        df = pd.read_csv(buffer)
+        df.columns = df.columns.str.strip()
+
+        transf = CoordTransf()
+        accepted = []
+        dropped = 0
+        for _, row in df.iterrows():
+            try:
+                lat = float(row["lat"])
+                lon = float(row["lon"])
+                ik = abs(float(row["current_kA"]))
+                if ik == 0:
+                    raise ValueError("corriente 0")
+            except (KeyError, TypeError, ValueError):
+                dropped += 1
+                continue
+            xp, yp = transf.to_projected(lat, lon)
+            X0, Y0 = xp - self.x_init, yp - self.y_init
+            if self._min_dist_to_lines(X0, Y0) > self.buffer_radius:
+                continue  # fuera del corredor de exposicion de la red
+            accepted.append((X0, Y0, ik))
+
+        if dropped:
+            print(f"* LLS: {dropped} fila(s) descartada(s) por datos invalidos")
+        if not accepted:
+            raise ValueError(
+                "LLS: cero rayos reales dentro del corredor de la red"
+            )
+
+        for i, (X0, Y0, ik) in enumerate(accepted):
+            Li = Lightning(case=i)
+            Li.initXY = self.initXY
+            Li.initlocation = self.initlocation
+            Li.tc1 = self.tc
+            Li.n1 = self.n1
+            Li.Decay_time = self.tc
+            Li.Front_time, Li.tf1 = self._impute_front_time(ik)
+            Li.Ih1 = ik * 1000                          # kA -> A
+            Li.Magnitude = Li.Ih1
+            Li.WaveformType = int(Current_Waveform.Heidler.value)
+            Li.X_location = X0
+            Li.Y_location = Y0
+            self.Lightnings.append(Li)
+
+        return 0
 
     # ---------------------------------------------------------
     # Spatial sampling

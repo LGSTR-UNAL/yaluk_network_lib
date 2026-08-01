@@ -36,10 +36,13 @@ def test_init_sin_lineas_lanza_valueerror_si_no_es_bbox():
 
 
 def test_init_bbox_no_requiere_lineas():
+    # M distinto de "ProbDistribution"/"Database" cae en el catch-all
+    # (Lightnings vacio, area del rectangulo) sin necesitar lineas.
     net = nl.Network()
     net.AddNode(0, 0, Nodeidx=1, ctype="abs")
-    ls = Lightning_stat(net, num_events=0, M="Database", sampling="bbox")
+    ls = Lightning_stat(net, num_events=0, M="OtroModoNoImplementado", sampling="bbox")
     assert ls.Area == pytest.approx((ls.Xmax - ls.Xmin) * (ls.Ymax - ls.Ymin))
+    assert ls.Lightnings == []
 
 
 def _net_dos_nodos():

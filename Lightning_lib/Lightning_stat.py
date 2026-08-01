@@ -17,6 +17,16 @@ if TYPE_CHECKING:
     from Network_lib.Network import Network
 
 
+def _dist_point_to_segment(px, py, ax, ay, bx, by) -> float:
+    """Distancia minima del punto (px,py) al segmento (ax,ay)-(bx,by)."""
+    dx, dy = bx - ax, by - ay
+    seg2 = dx * dx + dy * dy
+    if seg2 == 0.0:                       # segmento degenerado (nodos iguales)
+        return math.hypot(px - ax, py - ay)
+    t = max(0.0, min(1.0, ((px - ax) * dx + (py - ay) * dy) / seg2))
+    return math.hypot(px - (ax + t * dx), py - (ay + t * dy))
+
+
 class StatI_ModelType(Enum):
     Database = 0
     ProbDistribution = 1

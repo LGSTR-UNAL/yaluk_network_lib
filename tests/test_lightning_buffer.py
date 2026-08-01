@@ -88,3 +88,12 @@ def test_sampling_bbox_reproduce_rectangulo_legacy():
         assert ls.Xmin <= L.X_location <= ls.Xmax
         assert ls.Ymin <= L.Y_location <= ls.Ymax
     assert ls.Area == pytest.approx((ls.Xmax - ls.Xmin) * (ls.Ymax - ls.Ymin))
+
+
+def test_uniformidad_reject_vs_capsule_misma_area():
+    net = _net_dos_nodos()
+    ls_a = Lightning_stat(net, num_events=2000, sampling="buffer_reject", buffer_radius=1000.0)
+    ls_b = Lightning_stat(net, num_events=2000, sampling="buffer_capsule", buffer_radius=1000.0)
+    # ambas estiman la misma area real del corredor (misma geometria),
+    # dentro del error Monte Carlo de _compute_buffer_area (n=200000)
+    assert ls_a.Area == pytest.approx(ls_b.Area, rel=0.05)

@@ -6,6 +6,7 @@ import random
 from enum import Enum
 from typing import TYPE_CHECKING, List
 
+import numpy as np
 from scipy.stats import lognorm
 
 from yaluk_network_lib.Network_lib.GeoTransform import PointLatLng, PointXY
@@ -240,15 +241,35 @@ class Lightning_stat:
         th = rng.random() * 2 * math.pi
         return cx + rr * math.cos(th), cy + rr * math.sin(th)
 
-    def _compute_buffer_area(self, n: int = 200000) -> float:
-        rng = self._rng
+    def _compute_buffer_area(self, n: int = 200000, batch: int = 10000) -> float:
+        """Estimador Monte Carlo del area del corredor, vectorizado con NumPy.
+        La version en Python puro (bucle de n*len(segments) llamadas a
+        _dist_point_to_segment) tardaba ~57s con ~289 segmentos (caso real);
+        esta version tarda ~4s para el mismo caso, procesando en lotes para
+        no materializar un array (n x num_segmentos) completo en memoria."""
         bbox_area = (self.Xmax - self.Xmin) * (self.Ymax - self.Ymin)
+        seg = np.array(self.segments)          # (m,4): ax,ay,bx,by
+        ax, ay, bx, by = seg[:, 0], seg[:, 1], seg[:, 2], seg[:, 3]
+        dx, dy = bx - ax, by - ay
+        seg2 = dx * dx + dy * dy
+        seg2_safe = np.where(seg2 == 0.0, 1.0, seg2)   # evita division por 0
+
+        rng = self._rng
         inside = 0
-        for _ in range(n):
-            x = rng.uniform(self.Xmin, self.Xmax)
-            y = rng.uniform(self.Ymin, self.Ymax)
-            if self._min_dist_to_lines(x, y) <= self.buffer_radius:
-                inside += 1
+        remaining = n
+        while remaining > 0:
+            m = min(batch, remaining)
+            remaining -= m
+            px = self.Xmin + np.array([rng.random() for _ in range(m)]) * (self.Xmax - self.Xmin)
+            py = self.Ymin + np.array([rng.random() for _ in range(m)]) * (self.Ymax - self.Ymin)
+            px_b, py_b = px[:, None], py[:, None]      # (m,1) vs (1,num_seg)
+            t = ((px_b - ax) * dx + (py_b - ay) * dy) / seg2_safe
+            t = np.clip(t, 0.0, 1.0)
+            t = np.where(seg2 == 0.0, 0.0, t)           # degenerado -> t=0
+            cx, cy = ax + t * dx, ay + t * dy
+            dist = np.hypot(px_b - cx, py_b - cy)        # (m, num_seg)
+            min_dist = dist.min(axis=1)
+            inside += int(np.count_nonzero(min_dist <= self.buffer_radius))
         return bbox_area * inside / n
 
     # ---------------------------------------------------------

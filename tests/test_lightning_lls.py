@@ -146,6 +146,26 @@ def test_load_from_database_descarta_filas_invalidas():
     assert len(ls_obj.Lightnings) == 1  # las otras 2 filas se descartan
 
 
+def test_load_from_database_descarta_filas_con_nan():
+    # float('nan') no lanza excepcion al convertir, y las comparaciones con
+    # NaN dan False -- sin el chequeo explicito de isfinite(), una fila con
+    # lat/lon NaN pasaria el filtro del corredor silenciosamente.
+    net = _net_dos_nodos()
+    from yaluk_network_lib.Network_lib.GeoTransform import CoordTransf
+    transf = CoordTransf()
+    x_abs, y_abs = 500.0 + net.InitXY.X, 100.0 + net.InitXY.Y
+    lon_ok, lat_ok = transf.to_geographic(x_abs, y_abs)
+
+    buf = io.BytesIO((
+        "lat,lon,current_kA,timestamp\n"
+        f"{lat_ok},{lon_ok},18.0,2026-01-01T00:00:00Z\n"
+        ",,25.0,2026-01-01T00:01:00Z\n"  # lat/lon vacios -> NaN tras read_csv
+    ).encode())
+
+    ls_obj = Lightning_stat(net, M="Database", database_buffer=buf)
+    assert len(ls_obj.Lightnings) == 1
+
+
 def test_load_from_database_cero_rayos_en_corredor_lanza_valueerror():
     net = _net_dos_nodos()
     from yaluk_network_lib.Network_lib.GeoTransform import CoordTransf

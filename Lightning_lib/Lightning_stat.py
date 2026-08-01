@@ -211,6 +211,8 @@ class Lightning_stat:
                 lat = float(row["lat"])
                 lon = float(row["lon"])
                 ik = abs(float(row["current_kA"]))
+                if not (math.isfinite(lat) and math.isfinite(lon) and math.isfinite(ik)):
+                    raise ValueError("lat/lon/current_kA no finito (NaN o infinito)")
                 if ik == 0:
                     raise ValueError("corriente 0")
             except (KeyError, TypeError, ValueError):

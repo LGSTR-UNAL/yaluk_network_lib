@@ -118,7 +118,7 @@ class Lightning_stat:
 
     def GenStatCurrents(self) -> int:
 
-        rng = random.Random()
+        rng = self._rng
 
         Ix1 = lognorm(s=self.std_dev_I1, scale=math.exp(math.log(self.Mean_Ip_1)))
 
@@ -165,9 +165,10 @@ class Lightning_stat:
 
             Li.WaveformType = int(Current_Waveform.Heidler.value)
 
-            # Random spatial location
-            Li.X_location = self.Xmin + rng.random() * (self.Xmax - self.Xmin)
-            Li.Y_location = self.Ymin + rng.random() * (self.Ymax - self.Ymin)
+            # Random spatial location (dentro del corredor/buffer, ver _sample_location)
+            x, y = self._sample_location()
+            Li.X_location = x
+            Li.Y_location = y
 
             self.Lightnings.append(Li)
 

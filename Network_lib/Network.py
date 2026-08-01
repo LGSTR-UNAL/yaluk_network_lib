@@ -116,12 +116,15 @@ class Network(IdentifyObject):
         label=None,
         RPAT=20,
         configuration: str = "Default",
+        monitor: bool = True,
     ):
         """Add a node to the network at coordinates (X,Y) in meters from the initial location.
         If Nodeidx is provided, it will be used as the index for the new node (max 4 characters).
         Otherwise, the index will be automatically assigned based on the number of existing nodes.
         ctype: "rel" for relative to initial location, "abs" for absolute from the initial location
         label: optional label for the node
+        monitor: si es False no se pide la medicion de tension del nodo en el
+                 ATP (ver Node.monitor / ATP_cards_w.write_output)
         """
         tol_nodes = 1e-1  # Tolerance of 10 cm for node matching
         salida = Network.output()
@@ -140,6 +143,7 @@ class Network(IdentifyObject):
             else:
                 salida.index = 0
             newNode = Node(self.InitLatLong, RPAT, configuration)
+            newNode.monitor = monitor
             if ctype == "abs":
                 newNode.Location_X = X - self.InitXY.X
                 newNode.Location_Y = Y - self.InitXY.Y
@@ -239,10 +243,35 @@ class Network(IdentifyObject):
         E = Shunt_lump(RLC, Ni, P)
         E.SolidGrounded = Grounded
         self.Shunt_elements.append(E)
-        i = self.Nodes.GetByIdx(Ni)
-        if i is not None:
-            i.Shunt_elements.append(E)
+        # NodeCollection no tiene GetByIdx (solo LineCollection lo tiene), asi
+        # que el `self.Nodes.GetByIdx(Ni)` original lanzaba AttributeError: la
+        # rama nunca se habia ejecutado porque nada llamaba a AddRLC_* hasta
+        # la terminacion con Zc de la segmentacion. Ni ya ES el nodo.
+        if Ni is not None:
+            Ni.Shunt_elements.append(E)
         return 1
+
+    def AddZcTermination(self, Ni: Node):
+        """Termina la red en `Ni` con una resistencia a tierra por fase igual
+        a la impedancia caracteristica propia del conductor correspondiente
+        (`Configuration.Zc[i,i]`) de la linea incidente.
+
+        Se usa en los nodos donde un sub-caso de la segmentacion corta la red:
+        sin esta terminacion, el extremo abierto refleja la onda viajera y el
+        sub-caso reporta sobretensiones que no existen en la red completa.
+        Devuelve el numero de fases terminadas (0 si el nodo no tiene linea).
+        """
+        if not Ni.Lines:
+            return 0
+        linea = Ni.Lines[0]
+        config = linea.Configuration
+        if config is None or config.Zc is None:
+            return 0
+        for i, ph in enumerate(linea.Phases_connected):
+            R = lumped_element()
+            R.Resistance = float(config.Zc[i, i])
+            self.AddRLC_1p(R, Ni, ph, True)
+        return len(linea.Phases_connected)
 
     def AddRLC_1p_pair(self, RLC: lumped_element, Ni: Node, Nj: Node, P: PhaseName):
         E = Shunt_lump(RLC, Ni, P)

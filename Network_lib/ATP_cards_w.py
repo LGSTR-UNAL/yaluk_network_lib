@@ -232,6 +232,11 @@ def write_output(write, self):
     write("/OUTPUT\n")
     c_line = "  "
     for Node in self.Nodes:
+        # Nodos con monitor=False (buffer de exclusion de un sub-caso de la
+        # segmentacion) no se piden: es el filtro mas temprano posible, ATP
+        # ni siquiera calcula esas mediciones ni las escribe al .pl4.
+        if not getattr(Node, "monitor", True):
+            continue
         for i in range(Node.Num_conductors):
             ph = Node.Phases_id[i]
             token = f"N{Node.idx:04d}{ph}"

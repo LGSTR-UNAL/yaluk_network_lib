@@ -51,6 +51,12 @@ class Node(IdentifyObject):
         self.Location_y = 0.0  # Y Coordinate in meters from the initial location
         self.RPAT = RPAT
         self.Configuration = configuration
+        # Si es False, ATP_cards_w.write_output NO pide la medicion de
+        # tension de este nodo (no se calcula ni se escribe al .pl4). Lo usa
+        # la segmentacion de redes grandes para los nodos que solo estan en
+        # el sub-caso como contexto electrico (buffer de exclusion), no como
+        # parte del area de interes.
+        self.monitor: bool = True
 
     @property
     def InitLatLong(self) -> PointLatLng:

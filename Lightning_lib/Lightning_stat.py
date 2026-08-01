@@ -34,7 +34,14 @@ class StatI_ModelType(Enum):
 
 class Lightning_stat:
     def __init__(
-        self, net: Network, num_events=100, M: str = "ProbDistribution", dist=1000
+        self,
+        net: Network,
+        num_events=100,
+        M: str = "ProbDistribution",
+        dist=1000,
+        sampling: str = "buffer_reject",
+        buffer_radius: float = 1000.0,
+        max_tries: int = 50000,
     ):
 
         self.Model: StatI_ModelType = M
@@ -44,10 +51,34 @@ class Lightning_stat:
         self.Xmax: float = net.xmax + dist
         self.Ymin: float = net.ymin - dist
         self.Ymax: float = net.ymax + dist
-        self.Area: float = (self.Xmax - self.Xmin) * (self.Ymax - self.Ymin)
         self.initlocation = PointLatLng(net.InitLatLong.Lat, net.InitLatLong.Lng)
         self.x_init, self.y_init = net.InitXY.X, net.InitXY.Y
         self.initXY = PointXY(self.x_init, self.y_init)
+
+        # Buffer sampling config
+        self.sampling: str = sampling
+        self.buffer_radius: float = buffer_radius
+        self.max_tries: int = max_tries
+        self._rng = random.Random()      # siempre aleatorio, sin semilla
+        self.segments = [
+            (
+                L.Node_i.Location_X, L.Node_i.Location_Y,
+                L.Node_j.Location_X, L.Node_j.Location_Y,
+            )
+            for L in net.Lines
+        ]
+        if sampling != "bbox" and not self.segments:
+            raise ValueError(
+                "Lightning_stat: no hay lineas para construir el buffer "
+                "(net.Lines vacio); use sampling='bbox' o cargue la red primero."
+            )
+        # peso proporcional al area de la capsula (rect 2rL + circulo pi r^2)
+        self.seg_weights = [
+            2 * buffer_radius * math.hypot(bx - ax, by - ay)
+            + math.pi * buffer_radius ** 2
+            for (ax, ay, bx, by) in self.segments
+        ]
+
         # Statistics
         self.Num_events: int = num_events
 
@@ -70,9 +101,11 @@ class Lightning_stat:
         self.Lightnings: List[Lightning] = []
         if M == "ProbDistribution":
             self.GenStatCurrents()
+            self.Area: float = self._compute_buffer_area()
             self.check_direct_strike(net)
         else:
             self.Lightnings = []
+            self.Area: float = (self.Xmax - self.Xmin) * (self.Ymax - self.Ymin)
 
     # ---------------------------------------------------------
     # Statistical lightning generation

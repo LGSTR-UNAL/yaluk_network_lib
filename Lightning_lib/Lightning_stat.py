@@ -99,13 +99,18 @@ class Lightning_stat:
 
         # Lightning database
         self.Lightnings: List[Lightning] = []
+        bbox_area = (self.Xmax - self.Xmin) * (self.Ymax - self.Ymin)
         if M == "ProbDistribution":
             self.GenStatCurrents()
-            self.Area: float = self._compute_buffer_area()
+            # sampling="bbox" es el modo legacy: el area sigue siendo la del
+            # rectangulo, no la del corredor (los puntos SI cubren todo el bbox)
+            self.Area: float = (
+                bbox_area if self.sampling == "bbox" else self._compute_buffer_area()
+            )
             self.check_direct_strike(net)
         else:
             self.Lightnings = []
-            self.Area: float = (self.Xmax - self.Xmin) * (self.Ymax - self.Ymin)
+            self.Area: float = bbox_area
 
     # ---------------------------------------------------------
     # Statistical lightning generation
@@ -167,6 +172,83 @@ class Lightning_stat:
             self.Lightnings.append(Li)
 
         return 0
+
+    # ---------------------------------------------------------
+    # Spatial sampling
+    # ---------------------------------------------------------
+    def _min_dist_to_lines(self, x: float, y: float) -> float:
+        return min(_dist_point_to_segment(x, y, *s) for s in self.segments)
+
+    def _sample_location(self):
+        if self.sampling == "buffer_reject":
+            return self._sample_reject()
+        if self.sampling == "buffer_capsule":
+            return self._sample_capsule()
+        return self._sample_bbox()
+
+    def _sample_bbox(self):
+        rng = self._rng
+        x = self.Xmin + rng.random() * (self.Xmax - self.Xmin)
+        y = self.Ymin + rng.random() * (self.Ymax - self.Ymin)
+        return x, y
+
+    def _sample_reject(self):
+        rng = self._rng
+        x = y = 0.0
+        for _ in range(self.max_tries):
+            x = self.Xmin + rng.random() * (self.Xmax - self.Xmin)
+            y = self.Ymin + rng.random() * (self.Ymax - self.Ymin)
+            if self._min_dist_to_lines(x, y) <= self.buffer_radius:
+                return x, y
+        print(
+            f"* Aviso: no se encontro punto en el buffer en {self.max_tries} "
+            "intentos (corredor chico frente al bbox); se usa el ultimo sorteo."
+        )
+        return x, y
+
+    def _sample_capsule(self):
+        rng = self._rng
+        r = self.buffer_radius
+        for _ in range(self.max_tries):
+            seg = rng.choices(self.segments, weights=self.seg_weights, k=1)[0]
+            x, y = self._sample_in_capsule(seg, r)
+            k = sum(
+                1 for s in self.segments
+                if _dist_point_to_segment(x, y, *s) <= r
+            )
+            if k > 0 and rng.random() < 1.0 / k:
+                return x, y
+        print(
+            f"* Aviso: correccion de solapamiento no acepto en {self.max_tries} "
+            "intentos; se usa el ultimo sorteo."
+        )
+        return x, y
+
+    def _sample_in_capsule(self, seg, r):
+        rng = self._rng
+        ax, ay, bx, by = seg
+        L = math.hypot(bx - ax, by - ay)
+        rect, caps = 2 * r * L, math.pi * r * r
+        if L > 0 and rng.random() < rect / (rect + caps):
+            ux, uy = (bx - ax) / L, (by - ay) / L     # unitario a lo largo
+            s = rng.random() * L
+            n = (2 * rng.random() - 1) * r
+            return ax + ux * s - uy * n, ay + uy * s + ux * n   # normal (-uy,ux)
+        cx, cy = (ax, ay) if rng.random() < 0.5 else (bx, by)   # tapa en extremo
+        rr = r * math.sqrt(rng.random())
+        th = rng.random() * 2 * math.pi
+        return cx + rr * math.cos(th), cy + rr * math.sin(th)
+
+    def _compute_buffer_area(self, n: int = 200000) -> float:
+        rng = self._rng
+        bbox_area = (self.Xmax - self.Xmin) * (self.Ymax - self.Ymin)
+        inside = 0
+        for _ in range(n):
+            x = rng.uniform(self.Xmin, self.Xmax)
+            y = rng.uniform(self.Ymin, self.Ymax)
+            if self._min_dist_to_lines(x, y) <= self.buffer_radius:
+                inside += 1
+        return bbox_area * inside / n
 
     # ---------------------------------------------------------
     # File creation

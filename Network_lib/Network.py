@@ -628,7 +628,14 @@ class Network(IdentifyObject):
         stroke: Lightning = None,
         distance_threshold: float = -1,
     ):
-        if stroke is not None:
+        if stroke is None:
+            # Sin rayo no puede haber fuente de impacto directo: si se dejara el
+            # direct_strike del rayo ANTERIOR (esta instancia se reutiliza entre
+            # rayos), write_sources entra a la rama de impacto directo y
+            # desreferencia stroke.Ih1 sobre None -> AttributeError. Solo se
+            # llega aca al generar un ATP de diagnostico, sin rayo asociado.
+            self.direct_strike = False
+        else:
             self.check_direct_strike(
                 stroke.X_location, stroke.Y_location, stroke.Ih1, distance_threshold
             )

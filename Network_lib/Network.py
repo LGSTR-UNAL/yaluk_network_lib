@@ -273,6 +273,55 @@ class Network(IdentifyObject):
             self.AddRLC_1p(R, Ni, ph, True)
         return len(linea.Phases_connected)
 
+    def AddEarthingResistors(self, default_rpat: float) -> list:
+        """Agrega, una sola vez por red, una resistencia de puesta a tierra
+        (fase N) a cada nodo que la necesite: nodos con cable de guarda/neutro
+        (fase N ya presente por una linea conectada) y/o con equipo conectado.
+
+        El valor usado es el minimo, entre los que esten definidos, de
+        `Node.RPAT` y `Transformer.G_Resistance` de cada transformador cuyo
+        lado de alta tension (`NodeHV`) sea este nodo -- el lado de baja
+        (`NodeLV`) no se aterriza aparte, su neutro ya se modela unido a
+        `NodeHV.N` (ver `Transformer.write_atp_file`).
+
+        Si ningun valor esta definido y el nodo tiene equipo (transformador
+        o descargador), usa `default_rpat` y agrega la label del nodo a la
+        lista que devuelve (para que quien llama arme un warning agregado).
+        Si no hay ningun valor definido y el nodo solo tiene guarda (sin
+        equipo), no se aterriza: un RPAT vacio en ese caso es un dato real
+        (guarda que pasa sin conectarse a tierra en ese poste), no un dato
+        faltante.
+
+        Debe llamarse UNA SOLA VEZ por red, despues de agregar todos los
+        Nodes/Lines/Transformers/SurgeArresters -- nunca desde write_branches
+        / MakeATPBuffer, que corren una vez por rayo y duplicarian la tierra.
+        """
+        fallback_labels = []
+        for node in self.Nodes:
+            transformers_hv = [t for t in node.Transformers if t.NodeHV is node]
+            tiene_equipo = bool(transformers_hv) or bool(node.SurgeArresters)
+            tiene_guarda = PhaseName.N.value in node.Phases_id
+            if not (tiene_equipo or tiene_guarda):
+                continue
+
+            candidatos = [node.RPAT] + [t.G_Resistance for t in transformers_hv]
+            candidatos = [
+                c for c in candidatos
+                if c is not None and not (isinstance(c, float) and math.isnan(c))
+            ]
+            if candidatos:
+                resistencia = min(candidatos)
+            elif tiene_equipo:
+                resistencia = default_rpat
+                fallback_labels.append(node.name)
+            else:
+                continue
+
+            R = lumped_element()
+            R.Resistance = resistencia
+            self.AddRLC_1p(R, node, PhaseName.N, True)
+        return fallback_labels
+
     def AddRLC_1p_pair(self, RLC: lumped_element, Ni: Node, Nj: Node, P: PhaseName):
         E = Shunt_lump(RLC, Ni, P)
         E.SolidGrounded = False

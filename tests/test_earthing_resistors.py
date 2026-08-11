@@ -149,3 +149,21 @@ def test_atp_no_repite_la_tierra_del_transformador_via_write_atp_file():
         if l[:2] == "  " and l[2:8] == "N0001N"
     ]
     assert len(tarjetas_tierra_n) == 1
+
+
+def test_bloque_n_m_de_5_conductores_no_cambia():
+    """El puente N<->M (1e-6) es un bonding entre dos conductores fisicos
+    distintos, no una puesta a tierra -- AddEarthingResistors no debe
+    tocarlo ni reemplazarlo."""
+    net, _ = _net_dos_nodos(rpat_a=20.0, rpat_b=20.0, num_conductores=5)
+    net.AddEarthingResistors(default_rpat=10.0)
+
+    atp = net.MakeATPBuffer().getvalue().decode("utf-8")
+    ramas, _, _ = atp.partition("/SOURCE")
+
+    puentes_n_m = [
+        l for l in ramas.splitlines()
+        if l.startswith("  N0001N") and "N0001M" in l
+    ]
+    assert len(puentes_n_m) == 1
+    assert "1.0E-6" in puentes_n_m[0]

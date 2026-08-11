@@ -58,6 +58,3 @@ class SurgeArrester(Element_id):
                 current_line += "," + token
 
         write(current_line + "\n")
-        write(
-            f"  N{self.Ni.idx:04d}{phases[-1].value}                  {self.Ni.RPAT:6.1f}\n"
-        )

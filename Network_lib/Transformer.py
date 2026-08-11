@@ -141,8 +141,3 @@ class Transformer(IdentifyObject):
                 f"  {self.NodeLV.id}{phase.value}{self.NodeHV.id}{PhaseName.N.value}"
                 f"                        {self.LV_Capacitance:6.0E}                                   0\n"
             )
-        if not self.NodeHV.SurgeArresters:
-            write(
-                f"  {self.NodeHV.id}{PhaseName.N.value}"
-                f"                  {self.NodeHV.RPAT:6.1f}                                               0\n"
-            )

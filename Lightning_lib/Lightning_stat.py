@@ -44,6 +44,7 @@ class Lightning_stat:
         buffer_radius: float = 1000.0,
         max_tries: int = 50000,
         database_buffer=None,
+        replay_df=None,
         buffer_area_rel_error: float = 0.01,
         buffer_area_max_samples: int = 200000,
     ):
@@ -119,13 +120,16 @@ class Lightning_stat:
         elif M == "Database":
             self.LoadFromDatabase(database_buffer)
             self.check_direct_strike(net)
+        elif M == "Replay":
+            self.LoadFromPreviousRun(replay_df)
+            self.check_direct_strike(net)
 
         # sampling="bbox" es el modo legacy: el area sigue siendo la del
         # rectangulo, no la del corredor (los puntos SI cubren todo el bbox).
-        # M distinto de ProbDistribution/Database (stub futuro) tampoco corre
+        # M distinto de ProbDistribution/Database/Replay (stub futuro) tampoco corre
         # sobre el corredor, asi que tambien usa el area del rectangulo.
         bbox_area = (self.Xmax - self.Xmin) * (self.Ymax - self.Ymin)
-        uses_corridor = M in ("ProbDistribution", "Database") and self.sampling != "bbox"
+        uses_corridor = M in ("ProbDistribution", "Database", "Replay") and self.sampling != "bbox"
         self.Area: float = (
             self._compute_buffer_area(self.buffer_area_rel_error, self.buffer_area_max_samples)
             if uses_corridor else bbox_area
@@ -259,6 +263,48 @@ class Lightning_stat:
             Li.WaveformType = int(Current_Waveform.Heidler.value)
             Li.X_location = X0
             Li.Y_location = Y0
+            self.Lightnings.append(Li)
+
+        return 0
+
+    # ---------------------------------------------------------
+    # Replay de una corrida anterior (reproducibilidad)
+    # ---------------------------------------------------------
+    def LoadFromPreviousRun(self, df) -> int:
+        """Reconstruye rayos EXACTOS a partir de los parametros ya
+        calculados de una corrida anterior (Ih1/Ih2/tao11-22/n1/n2/X0/Y0),
+        sin pasar por ningun sorteo -- a diferencia de LoadFromDatabase, que
+        si vuelve a llamar _impute_front_time (con su propio numero
+        aleatorio) para el tiempo de frente. Filtra espacialmente igual que
+        LoadFromDatabase: un rayo puede quedar fuera del corredor de ESTE
+        sub-caso y pertenecer al de un sub-caso vecino -- no hay
+        deduplicacion entre sub-casos (spec de reutilizacion de rayos,
+        2026-08-12). A diferencia de LoadFromDatabase, NO lanza excepcion si
+        el resultado queda vacio: un sub-caso sin rayos reutilizables es un
+        resultado valido (se acepta el hueco), no un error."""
+        accepted = []
+        for _, row in df.iterrows():
+            X0, Y0 = float(row["X0"]), float(row["Y0"])
+            if self._min_dist_to_lines(X0, Y0) > self.buffer_radius:
+                continue
+            accepted.append(row)
+
+        for i, row in enumerate(accepted):
+            Li = Lightning(case=i)
+            Li.initXY = self.initXY
+            Li.initlocation = self.initlocation
+            Li.Ih1 = float(row["Ih1"])
+            Li.Ih2 = float(row["Ih2"])
+            Li.tf1 = float(row["tao11"])
+            Li.tc1 = float(row["tao21"])
+            Li.tf2 = float(row["tao12"])
+            Li.tc2 = float(row["tao22"])
+            Li.n1 = float(row["n1"])
+            Li.n2 = float(row["n2"])
+            Li.Magnitude = Li.Ih1
+            Li.WaveformType = int(Current_Waveform.Heidler.value)
+            Li.X_location = float(row["X0"])
+            Li.Y_location = float(row["Y0"])
             self.Lightnings.append(Li)
 
         return 0

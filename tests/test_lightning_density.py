@@ -209,6 +209,27 @@ def test_compute_density_check_punto_de_ramificacion_no_cuenta_como_terminal():
     assert result["tramos"][0]["A_i_km2"] == pytest.approx(esperado_km2)
 
 
+def test_compute_density_check_excluye_terminales_marcados_como_puntos_de_corte():
+    # Un punto de corte artificial (limite de un area particionada,
+    # terminado con R=Zc) es degree 1 DENTRO de este sub-caso, pero NO es un
+    # extremo real de la linea -- el corredor sigue en el area vecina.
+    # excluded_terminal_points lo deja afuera del casquete aunque localmente
+    # parezca terminal (evita el sobre-conteo real medido en areas
+    # particionadas del caso real: el casquete se sumaba tambien en cada
+    # punto de corte, empeorando la sobreestimacion en vez de mejorarla).
+    net = _net_linea(n_nodos=5, paso=250.0)  # 4 segmentos de 250 m
+    ls = Lightning_stat(net, num_events=0, sampling="buffer_reject", buffer_radius=100.0)
+    punto_de_corte = (0.0, 0.0)  # extremo del primer nodo (x=0, y=0)
+    result = ls.compute_density_check(
+        Ng_real=1.0, segment_length_km=0.25,
+        excluded_terminal_points={punto_de_corte},
+    )
+    rect_only = (2 * 100.0 * 250.0) / 1e6
+    con_casquete = rect_only + (math.pi * 100.0**2 / 2) / 1e6
+    assert result["tramos"][0]["A_i_km2"] == pytest.approx(rect_only)      # excluido -> sin casquete
+    assert result["tramos"][3]["A_i_km2"] == pytest.approx(con_casquete)   # extremo real -> con casquete
+
+
 def test_compute_density_check_tsim():
     net = _net_dos_nodos(1000.0)
     ls = Lightning_stat(net, num_events=0, sampling="buffer_reject", buffer_radius=100.0)

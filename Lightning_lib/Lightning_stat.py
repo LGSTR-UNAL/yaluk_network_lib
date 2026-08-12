@@ -391,7 +391,9 @@ class Lightning_stat:
         dists = [_dist_point_to_segment(x, y, *s) for s in self.segments]
         return min(range(len(dists)), key=lambda i: dists[i])
 
-    def compute_density_check(self, Ng_real: float, segment_length_km: float) -> dict:
+    def compute_density_check(
+        self, Ng_real: float, segment_length_km: float, excluded_terminal_points=None,
+    ) -> dict:
         """Chequeo de homogeneidad de la campana de rayos ya generada
         (self.Lightnings): parte self.segments en tramos consecutivos (mismo
         orden que net.Lines) de longitud objetivo `segment_length_km`, cuenta
@@ -415,12 +417,26 @@ class Lightning_stat:
         tramo con los dos extremos de la red entera (isla de un solo
         segmento) lleva el casquete completo, un tramo interno o un punto de
         ramificacion (grado >=2, compartido por varios segmentos) no suma
-        nada. Sigue siendo aproximado (el solape en curvas/quiebres
-        cerrados dentro de un tramo, o entre tramos de ramas distintas que
-        quedan geometricamente cerca, no se corrige) pero es sustancialmente
-        mejor que ignorar los extremos del todo. A_buffer (para T_sim) sigue
+        nada.
+
+        `excluded_terminal_points`: set opcional de (x,y) (mismo redondeo a
+        3 decimales que el grado interno) que NUNCA cuentan como terminal
+        aunque localmente tengan grado 1 -- son los puntos de CORTE
+        artificiales de un sub-caso particionado (`cut_labels`, terminados
+        con R=Zc): el corredor real sigue en el area vecina, sumarles un
+        casquete duplicaria esa porcion de buffer. Sin esto, un area
+        particionada con varios cortes termina SOBREESTIMANDO mas que antes
+        de agregar el casquete (medido contra el caso real: +27% -> +96%).
+
+        Sigue siendo aproximado (el solape en curvas/quiebres cerrados
+        dentro de un tramo, o entre tramos de ramas distintas que quedan
+        geometricamente cerca, no se corrige) pero es sustancialmente mejor
+        que ignorar los extremos del todo. A_buffer (para T_sim) sigue
         siendo el estimador Monte Carlo exacto de self.Area, no se toca.
         """
+        excluded_terminal_points = {
+            (round(x, 3), round(y, 3)) for (x, y) in (excluded_terminal_points or ())
+        }
         n_segments = len(self.segments)
         seg_lengths_m = [
             math.hypot(bx - ax, by - ay) for (ax, ay, bx, by) in self.segments
@@ -468,7 +484,7 @@ class Lightning_stat:
             return sum(
                 1
                 for pt in ((round(ax, 3), round(ay, 3)), (round(bx, 3), round(by, 3)))
-                if endpoint_degree[pt] == 1
+                if endpoint_degree[pt] == 1 and pt not in excluded_terminal_points
             )
 
         half_cap_m2 = math.pi * self.buffer_radius**2 / 2

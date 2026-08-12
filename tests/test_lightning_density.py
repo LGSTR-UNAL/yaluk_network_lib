@@ -300,6 +300,28 @@ def test_compute_density_check_tsim():
     assert result["L_lin_km"] == pytest.approx(1.0)
 
 
+def test_compute_density_check_ng_i_esta_normalizado_por_tsim():
+    # Ng_i tiene que estar en las mismas unidades que Ng_real (rayos/km2/año),
+    # no en rayos/km2 "crudo" acumulados durante los T_sim años simulados --
+    # sin dividir por T_sim_years, Ng_i queda T_sim veces mas grande que
+    # Ng_real para cualquier T_sim != 1 (bug real reportado por el usuario:
+    # la comparacion Ng_i vs Ng_real en la UI asume que estan normalizados
+    # igual).
+    net = _net_dos_nodos(1000.0)
+    ls = Lightning_stat(net, num_events=0, sampling="buffer_reject", buffer_radius=100.0)
+    ls.Lightnings = [_rayo(10, 0) for _ in range(20)]
+    result = ls.compute_density_check(Ng_real=2.0, segment_length_km=5.0)  # n=1
+    assert result["n_tramos"] == 1
+    tramo = result["tramos"][0]
+    assert result["T_sim_years"] == pytest.approx(20 / (2.0 * result["A_buffer_km2"]))
+    ng_i_crudo = tramo["m_i"] / tramo["A_i_km2"]
+    assert tramo["Ng_i"] == pytest.approx(ng_i_crudo / result["T_sim_years"])
+    # Un unico tramo que cubre toda la linea (m_i == m_t) tiene que dar un
+    # Ng_i normalizado cercano a Ng_real -- la franja rectangular+casquete
+    # es una buena aproximacion del area Monte Carlo real sin bifurcaciones.
+    assert tramo["Ng_i"] == pytest.approx(2.0, rel=0.05)
+
+
 def test_compute_density_check_l_lin_km_suma_todos_los_segmentos():
     # 4 segmentos de 250 m = 1000 m = 1.0 km en total, repartidos en 2 tramos.
     net = _net_linea(n_nodos=5, paso=250.0)

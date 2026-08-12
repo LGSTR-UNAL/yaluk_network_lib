@@ -559,6 +559,24 @@ class Lightning_stat:
 
         half_cap_m2 = math.pi * self.buffer_radius**2 / 2
 
+        A_buffer_km2 = self.Area / 1e6
+        m_t = len(self.Lightnings)
+        T_sim_years = (
+            m_t / (Ng_real * A_buffer_km2) if Ng_real and Ng_real > 0 and A_buffer_km2 else None
+        )
+
+        def _ng_i(m_i: int, area_km2: float):
+            # Ng_i tiene que quedar en las mismas unidades que Ng_real
+            # (rayos/km2/año): m_i/area_km2 es la densidad CRUDA acumulada
+            # durante los T_sim años ya simulados, no una tasa anual -- sin
+            # dividir por T_sim_years, Ng_i queda T_sim veces mayor que
+            # Ng_real para cualquier T_sim != 1 (bug real reportado por el
+            # usuario, la UI compara Ng_i contra Ng_real asumiendo la misma
+            # escala).
+            if not area_km2 or not T_sim_years:
+                return None
+            return (m_i / area_km2) / T_sim_years
+
         tramos = []
         for bi, idxs in enumerate(bucket_indices):
             length_m = sum(seg_lengths_m[i] for i in idxs)
@@ -569,7 +587,7 @@ class Lightning_stat:
                 "tramo": len(tramos),
                 "m_i": m_i,
                 "A_i_km2": area_km2,
-                "Ng_i": (m_i / area_km2) if area_km2 else None,
+                "Ng_i": _ng_i(m_i, area_km2),
             })
         for ci, group in enumerate(cluster_groups):
             area_km2 = self._cluster_union_area_m2(group) / 1e6
@@ -578,14 +596,8 @@ class Lightning_stat:
                 "tramo": len(tramos),
                 "m_i": m_i,
                 "A_i_km2": area_km2,
-                "Ng_i": (m_i / area_km2) if area_km2 else None,
+                "Ng_i": _ng_i(m_i, area_km2),
             })
-
-        A_buffer_km2 = self.Area / 1e6
-        m_t = len(self.Lightnings)
-        T_sim_years = (
-            m_t / (Ng_real * A_buffer_km2) if Ng_real and Ng_real > 0 and A_buffer_km2 else None
-        )
 
         return {
             "Ng_real": Ng_real,

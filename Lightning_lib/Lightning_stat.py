@@ -549,6 +549,7 @@ class Lightning_stat:
             "T_sim_years": T_sim_years,
             "n_tramos": len(tramos),
             "tramos": tramos,
+            "L_lin_km": sum(seg_lengths_m) / 1000.0,
         }
 
     def _branch_clusters(self, endpoint_degree: dict, seg_lengths_m: list) -> list:

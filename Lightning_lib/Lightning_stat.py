@@ -428,52 +428,35 @@ class Lightning_stat:
         particionada con varios cortes termina SOBREESTIMANDO mas que antes
         de agregar el casquete (medido contra el caso real: +27% -> +96%).
 
-        Sigue siendo aproximado (el solape en curvas/quiebres cerrados
-        dentro de un tramo, o entre tramos de ramas distintas que quedan
-        geometricamente cerca, no se corrige) pero es sustancialmente mejor
-        que ignorar los extremos del todo. A_buffer (para T_sim) sigue
-        siendo el estimador Monte Carlo exacto de self.Area, no se toca.
+        Los segmentos cerca de una bifurcacion real (nodo de grado >=3) se
+        agrupan en su PROPIO tramo (uno por cluster de bifurcacion), con el
+        area calculada por union geometrica real (`shapely`) en vez de la
+        franja rectangular -- evita sumar el solape entre ramas cercanas
+        entre si, que es la limitacion estructural que quedaba tras agregar
+        el casquete de terminales (medido contra el caso real: redes con
+        ramificaciones sobreestimaban +27% a +88%). El resto de la linea
+        (tramos derechos, lejos de cualquier bifurcacion) sigue con la
+        aproximacion rectangular + casquete de siempre.
+
+        Sigue siendo aproximado: el reparto de rayos entre ramas de un mismo
+        cluster es exacto (cada rayo va al segmento mas cercano), pero un
+        cluster cortado por `cluster_radius` (o por un `excluded_terminal_points`
+        que cae dentro del cluster) puede seguir sumando un casquete de mas
+        en ese extremo artificial -- `shapely.buffer()` no distingue un
+        extremo real de uno cortado para el calculo. A_buffer (para T_sim)
+        sigue siendo el estimador Monte Carlo exacto de self.Area, no se toca.
         """
         excluded_terminal_points = {
             (round(x, 3), round(y, 3)) for (x, y) in (excluded_terminal_points or ())
         }
-        n_segments = len(self.segments)
         seg_lengths_m = [
             math.hypot(bx - ax, by - ay) for (ax, ay, bx, by) in self.segments
         ]
-        total_length_km = sum(seg_lengths_m) / 1000.0
 
-        if segment_length_km and segment_length_km > 0 and total_length_km > 0:
-            n = max(1, min(n_segments, round(total_length_km / segment_length_km)))
-        else:
-            n = 1
-
-        total_length_m = sum(seg_lengths_m)
-        target = total_length_m / n
-        bucket_indices = []
-        current, current_len = [], 0.0
-        for i, seg_len in enumerate(seg_lengths_m):
-            current.append(i)
-            current_len += seg_len
-            if current_len >= target and len(bucket_indices) < n - 1:
-                bucket_indices.append(current)
-                current, current_len = [], 0.0
-        bucket_indices.append(current)
-
-        seg_to_bucket = {}
-        for bi, idxs in enumerate(bucket_indices):
-            for i in idxs:
-                seg_to_bucket[i] = bi
-
-        counts = [0] * len(bucket_indices)
-        for L in self.Lightnings:
-            si = self.nearest_segment_index(L.X_location, L.Y_location)
-            counts[seg_to_bucket[si]] += 1
-
-        # Grado de cada punto (extremo de segmento): 1 = terminal real.
-        # Las coordenadas de nodos compartidos son el mismo float reusado
-        # (mismo objeto Node de varias Lines), asi que el redondeo es solo
-        # una salvaguarda, no hace falta tolerancia.
+        # Grado de cada punto (extremo de segmento): 1 = terminal real,
+        # >=3 = bifurcacion. Las coordenadas de nodos compartidos son el
+        # mismo float reusado (mismo objeto Node de varias Lines), asi que
+        # el redondeo es solo una salvaguarda, no hace falta tolerancia.
         endpoint_degree: dict = {}
         for (ax, ay, bx, by) in self.segments:
             for pt in ((round(ax, 3), round(ay, 3)), (round(bx, 3), round(by, 3))):
@@ -487,6 +470,47 @@ class Lightning_stat:
                 if endpoint_degree[pt] == 1 and pt not in excluded_terminal_points
             )
 
+        cluster_groups = self._branch_clusters(endpoint_degree, seg_lengths_m)
+        segments_in_cluster = {i for group in cluster_groups for i in group}
+
+        # El resto de los segmentos (fuera de cualquier cluster de
+        # bifurcacion) se reparte en tramos consecutivos por longitud
+        # acumulada, igual que antes -- pero solo entre ellos, n se recalcula
+        # sobre la longitud que les queda.
+        remaining = [i for i in range(len(self.segments)) if i not in segments_in_cluster]
+        remaining_length_km = sum(seg_lengths_m[i] for i in remaining) / 1000.0
+
+        if segment_length_km and segment_length_km > 0 and remaining_length_km > 0:
+            n = max(1, min(len(remaining), round(remaining_length_km / segment_length_km)))
+        else:
+            n = 1 if remaining else 0
+
+        bucket_indices = []
+        if remaining:
+            target = sum(seg_lengths_m[i] for i in remaining) / n
+            current, current_len = [], 0.0
+            for i in remaining:
+                current.append(i)
+                current_len += seg_lengths_m[i]
+                if current_len >= target and len(bucket_indices) < n - 1:
+                    bucket_indices.append(current)
+                    current, current_len = [], 0.0
+            bucket_indices.append(current)
+
+        seg_to_tramo: dict = {}
+        for bi, idxs in enumerate(bucket_indices):
+            for i in idxs:
+                seg_to_tramo[i] = ("normal", bi)
+        for ci, group in enumerate(cluster_groups):
+            for i in group:
+                seg_to_tramo[i] = ("cluster", ci)
+
+        counts: dict = {}
+        for L in self.Lightnings:
+            si = self.nearest_segment_index(L.X_location, L.Y_location)
+            key = seg_to_tramo[si]
+            counts[key] = counts.get(key, 0) + 1
+
         half_cap_m2 = math.pi * self.buffer_radius**2 / 2
 
         tramos = []
@@ -494,9 +518,18 @@ class Lightning_stat:
             length_m = sum(seg_lengths_m[i] for i in idxs)
             n_terminales = sum(_n_terminales(i) for i in idxs)
             area_km2 = (2 * self.buffer_radius * length_m + n_terminales * half_cap_m2) / 1e6
-            m_i = counts[bi]
+            m_i = counts.get(("normal", bi), 0)
             tramos.append({
-                "tramo": bi,
+                "tramo": len(tramos),
+                "m_i": m_i,
+                "A_i_km2": area_km2,
+                "Ng_i": (m_i / area_km2) if area_km2 else None,
+            })
+        for ci, group in enumerate(cluster_groups):
+            area_km2 = self._cluster_union_area_m2(group) / 1e6
+            m_i = counts.get(("cluster", ci), 0)
+            tramos.append({
+                "tramo": len(tramos),
                 "m_i": m_i,
                 "A_i_km2": area_km2,
                 "Ng_i": (m_i / area_km2) if area_km2 else None,
@@ -514,9 +547,88 @@ class Lightning_stat:
             "m_t": m_t,
             "A_buffer_km2": A_buffer_km2,
             "T_sim_years": T_sim_years,
-            "n_tramos": len(bucket_indices),
+            "n_tramos": len(tramos),
             "tramos": tramos,
         }
+
+    def _branch_clusters(self, endpoint_degree: dict, seg_lengths_m: list) -> list:
+        """Agrupa en clusters los segmentos cercanos a una bifurcacion real
+        (nodo de grado >=3): desde cada nodo asi, camina por la red hasta
+        `self.buffer_radius` metros acumulados por cada rama, juntando los
+        segmentos recorridos. Clusters que comparten un segmento (dos
+        bifurcaciones cercanas entre si) se fusionan en uno solo. Devuelve
+        una lista de sets de indices de self.segments -- vacia si no hay
+        ninguna bifurcacion."""
+        branch_points = {pt for pt, deg in endpoint_degree.items() if deg >= 3}
+        if not branch_points:
+            return []
+
+        adjacency: dict = {}
+        for i, (ax, ay, bx, by) in enumerate(self.segments):
+            pa = (round(ax, 3), round(ay, 3))
+            pb = (round(bx, 3), round(by, 3))
+            adjacency.setdefault(pa, []).append((i, pb))
+            adjacency.setdefault(pb, []).append((i, pa))
+
+        cluster_radius = self.buffer_radius
+        segments_near_branch: set = set()
+        for bp in branch_points:
+            visited = {bp: 0.0}
+            stack = [bp]
+            while stack:
+                pt = stack.pop()
+                dist_here = visited[pt]
+                if dist_here >= cluster_radius:
+                    continue
+                for seg_idx, other_pt in adjacency.get(pt, []):
+                    segments_near_branch.add(seg_idx)
+                    new_dist = dist_here + seg_lengths_m[seg_idx]
+                    if other_pt not in visited or new_dist < visited[other_pt]:
+                        visited[other_pt] = new_dist
+                        stack.append(other_pt)
+
+        # Componentes conexas de segments_near_branch (segmentos que
+        # comparten un extremo quedan en el mismo grupo/tramo).
+        point_to_segs: dict = {}
+        for i in segments_near_branch:
+            ax, ay, bx, by = self.segments[i]
+            for pt in ((round(ax, 3), round(ay, 3)), (round(bx, 3), round(by, 3))):
+                point_to_segs.setdefault(pt, []).append(i)
+
+        groups = []
+        remaining = set(segments_near_branch)
+        while remaining:
+            start = next(iter(remaining))
+            group: set = set()
+            stack = [start]
+            while stack:
+                seg_i = stack.pop()
+                if seg_i in group:
+                    continue
+                group.add(seg_i)
+                remaining.discard(seg_i)
+                ax, ay, bx, by = self.segments[seg_i]
+                for pt in ((round(ax, 3), round(ay, 3)), (round(bx, 3), round(by, 3))):
+                    for other in point_to_segs.get(pt, ()):
+                        if other not in group:
+                            stack.append(other)
+            groups.append(group)
+        return groups
+
+    def _cluster_union_area_m2(self, segment_indices) -> float:
+        """Area real (m^2) de la union de los buffers de los segmentos
+        indicados -- reemplaza la suma de franjas independientes por la
+        geometria real (shapely), evitando contar el solape entre ramas mas
+        de una vez."""
+        from shapely.geometry import LineString
+        from shapely.ops import unary_union
+
+        buffers = [
+            LineString([(ax, ay), (bx, by)]).buffer(self.buffer_radius)
+            for i in segment_indices
+            for (ax, ay, bx, by) in [self.segments[i]]
+        ]
+        return unary_union(buffers).area
 
     # ---------------------------------------------------------
     # File creation

@@ -61,6 +61,22 @@ def _net_estrella():
     return net
 
 
+def _net_con_lateral():
+    """Linea principal de 10 nodos (9 segmentos de 200 m, 1800 m total) con
+    un lateral corto (1 segmento de 300 m) saliendo perpendicular del nodo
+    en x=1000 (grado 3: dos tramos de la principal + el lateral)."""
+    net = nl.Network("uid_test", "Test_Network")
+    net.InitXY = nl.PointXY(0, 0)
+    config = _config_mono()
+    for i in range(10):
+        net.AddNode(i * 200.0, 0, Nodeidx=i + 1, ctype="abs")
+    net.AddNode(1000.0, 300.0, Nodeidx=11, ctype="abs")  # punta del lateral
+    for i in range(9):
+        net.AddLine(net.Nodes[i], net.Nodes[i + 1], config)
+    net.AddLine(net.Nodes[5], net.Nodes[10], config)  # lateral desde x=1000 (Nodes[5])
+    return net
+
+
 def _rayo(x, y):
     L = Lightning(case=0)
     L.X_location = x
@@ -195,18 +211,10 @@ def test_compute_density_check_solo_los_tramos_extremos_llevan_casquete():
     assert areas[3] == pytest.approx(con_casquete)    # ultimo tramo: extremo real
 
 
-def test_compute_density_check_punto_de_ramificacion_no_cuenta_como_terminal():
-    net = _net_estrella()
-    ls = Lightning_stat(net, num_events=0, sampling="buffer_reject", buffer_radius=100.0)
-    result = ls.compute_density_check(Ng_real=1.0, segment_length_km=100.0)  # n=1: los 3 brazos juntos
-    assert result["n_tramos"] == 1
-    total_length_m = sum(math.hypot(bx - ax, by - ay) for (ax, ay, bx, by) in ls.segments)
-    # 3 puntas (A/B/D) son terminales -> 3 medios circulos (1.5 circulos
-    # completos). El centro C, compartido por las 3 lineas (grado 3), NO
-    # suma casquete -- si contara cada extremo de cada segmento a ciegas
-    # (sin detectar grado), saldrian 6 medios circulos en vez de 3.
-    esperado_km2 = (2 * 100.0 * total_length_m + 3 * (math.pi * 100.0**2 / 2)) / 1e6
-    assert result["tramos"][0]["A_i_km2"] == pytest.approx(esperado_km2)
+# NOTA: el escenario de "un punto de grado>=3 no debe contar como terminal"
+# ahora esta cubierto por el camino de cluster de bifurcacion, no por el
+# conteo de terminales -- ver test_compute_density_check_bifurcacion_*
+# mas abajo (agrupan la estrella en un tramo con area por union geometrica).
 
 
 def test_compute_density_check_excluye_terminales_marcados_como_puntos_de_corte():
@@ -228,6 +236,57 @@ def test_compute_density_check_excluye_terminales_marcados_como_puntos_de_corte(
     con_casquete = rect_only + (math.pi * 100.0**2 / 2) / 1e6
     assert result["tramos"][0]["A_i_km2"] == pytest.approx(rect_only)      # excluido -> sin casquete
     assert result["tramos"][3]["A_i_km2"] == pytest.approx(con_casquete)   # extremo real -> con casquete
+
+
+def test_compute_density_check_bifurcacion_se_agrupa_en_un_solo_tramo_con_area_real():
+    # Los 3 brazos de la estrella tocan directamente el centro (grado 3) ->
+    # los 3 segmentos entran al mismo cluster de bifurcacion y se reportan
+    # como UN SOLO tramo, con el area real (union geometrica), no la suma
+    # de 3 franjas+casquetes independientes (que exagera el solape cerca
+    # del centro).
+    from shapely.geometry import LineString
+    from shapely.ops import unary_union
+
+    net = _net_estrella()
+    ls = Lightning_stat(net, num_events=0, sampling="buffer_reject", buffer_radius=100.0)
+    result = ls.compute_density_check(Ng_real=1.0, segment_length_km=0.1)
+    assert result["n_tramos"] == 1
+
+    union = unary_union([
+        LineString([(ax, ay), (bx, by)]).buffer(100.0) for (ax, ay, bx, by) in ls.segments
+    ])
+    assert result["tramos"][0]["A_i_km2"] == pytest.approx(union.area / 1e6, rel=1e-6)
+
+    # El area real tiene que ser MENOR que sumar 3 franjas+casquete
+    # independientes (el bug que se queria evitar: contar el solape cerca
+    # del centro varias veces).
+    naive_km2 = sum(
+        (2 * 100.0 * math.hypot(bx - ax, by - ay) + math.pi * 100.0**2 / 2) / 1e6
+        for (ax, ay, bx, by) in ls.segments
+    )
+    assert result["tramos"][0]["A_i_km2"] < naive_km2
+
+
+def test_compute_density_check_bifurcacion_lejos_de_tramos_rectos_no_los_afecta():
+    # Solo los segmentos CERCA de la bifurcacion (dentro de buffer_radius)
+    # se agrupan en el tramo de cluster; el resto de la linea recta, lejos
+    # del nodo de grado 3, sigue con los tramos normales de siempre.
+    net = _net_con_lateral()  # rama de grado 3 en x=1000, buffer_radius=100
+    ls = Lightning_stat(net, num_events=0, sampling="buffer_reject", buffer_radius=100.0)
+    result = ls.compute_density_check(Ng_real=1.0, segment_length_km=0.7)
+    # 1 tramo de cluster (los 3 segmentos que tocan el nodo x=1000) + los
+    # tramos normales de los 1400 m de linea recta que quedan afuera.
+    assert result["n_tramos"] > 1
+    assert result["m_t"] == sum(t["m_i"] for t in result["tramos"])
+
+    # Un rayo lejos de la bifurcacion (extremo x=0) tiene que caer en un
+    # tramo NORMAL (franja rectangular), no en el tramo de cluster de la
+    # bifurcacion -- el cluster siempre se agrega al final de la lista.
+    ls.Lightnings = [_rayo(10, 0)]
+    result2 = ls.compute_density_check(Ng_real=1.0, segment_length_km=0.7)
+    tramo_con_rayo = next(t for t in result2["tramos"] if t["m_i"] == 1)
+    cluster_tramo = result2["tramos"][-1]
+    assert tramo_con_rayo["tramo"] != cluster_tramo["tramo"]
 
 
 def test_compute_density_check_tsim():

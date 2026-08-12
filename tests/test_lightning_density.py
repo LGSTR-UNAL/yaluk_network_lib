@@ -45,6 +45,22 @@ def _net_linea(n_nodos=5, paso=250.0):
     return net
 
 
+def _net_estrella():
+    """3 brazos que salen de un centro C compartido (grado 3) -- C NO es
+    terminal (aparece como extremo de las 3 lineas), las 3 puntas A/B/D si."""
+    net = nl.Network("uid_test", "Test_Network")
+    net.InitXY = nl.PointXY(0, 0)
+    config = _config_mono()
+    net.AddNode(0, 0, Nodeidx=1, ctype="abs")        # C (centro)
+    net.AddNode(500, 0, Nodeidx=2, ctype="abs")      # A
+    net.AddNode(-500, 300, Nodeidx=3, ctype="abs")   # B
+    net.AddNode(-500, -300, Nodeidx=4, ctype="abs")  # D
+    net.AddLine(net.Nodes[0], net.Nodes[1], config)  # C-A
+    net.AddLine(net.Nodes[0], net.Nodes[2], config)  # C-B
+    net.AddLine(net.Nodes[0], net.Nodes[3], config)  # C-D
+    return net
+
+
 def _rayo(x, y):
     L = Lightning(case=0)
     L.X_location = x
@@ -125,33 +141,72 @@ def test_compute_density_check_cuenta_rayos_por_tramo_consecutivo():
 def test_compute_density_check_area_no_duplica_circulos_por_segmento_corto():
     # Un tramo de ~1000 m compuesto por 7 segmentos CORTOS (~143 m c/u, como
     # los tramos reales entre postes) con buffer_radius=1000 m: el area del
-    # tramo tiene que ser la de una franja rectangular (2*r*L, ~2 km^2 con
-    # r=1km), NO la suma de 7 capsulas individuales (cada una con su propio
-    # circulo pi*r^2 ~3.14 km^2 -- eso daria ~24 km^2, el bug real
-    # reportado por el usuario contra el caso real: se veian ~11-12 km^2
-    # por tramo de 1 km en vez de ~2 km^2).
+    # tramo tiene que ser la franja rectangular (2*r*L) MAS el casquete
+    # completo de sus 2 extremos reales (son terminales, es el unico tramo),
+    # NO la suma de 7 capsulas individuales (cada una con su propio circulo
+    # pi*r^2 ~3.14 km^2 -- eso daria ~24 km^2, el bug real reportado por el
+    # usuario contra el caso real: se veian ~11-12 km^2 por tramo de 1 km en
+    # vez de los ~5 km^2 esperados aca).
     net = _net_linea(n_nodos=8, paso=1000.0 / 7)  # 7 segmentos, ~1000 m total
     ls = Lightning_stat(net, num_events=0, sampling="buffer_reject", buffer_radius=1000.0)
     result = ls.compute_density_check(Ng_real=1.0, segment_length_km=1.0)
     assert result["n_tramos"] == 1
-    area_esperada_km2 = 2 * 1000.0 * 1000.0 / 1e6  # franja rectangular: 2 km^2
-    assert result["tramos"][0]["A_i_km2"] == pytest.approx(area_esperada_km2, rel=0.02)
+    rect_km2 = 2 * 1000.0 * 1000.0 / 1e6
+    casquete_km2 = math.pi * 1000.0**2 / 1e6  # los 2 extremos son terminales -> circulo completo
+    assert result["tramos"][0]["A_i_km2"] == pytest.approx(rect_km2 + casquete_km2, rel=0.02)
 
 
 def test_compute_density_check_suma_de_tramos_es_consistente_con_el_buffer_total():
-    # Sanity check pedido a raiz del hallazgo: sumar el area de todos los
-    # tramos (franjas rectangulares) tiene que dar el area total MENOS
-    # exactamente el casquete circular completo (pi*r^2) de los 2 extremos
-    # de la linea entera -- no varias veces MAS grande, que es lo que pasaba
-    # con el bug de seg_weights. En esta linea recta de prueba el casquete
-    # es una fraccion GRANDE del total (radio == longitud de la linea), a
-    # diferencia del caso real (decenas de km) donde es un margen chico.
+    # Sanity check pedido a raiz del hallazgo: para una linea recta (sin
+    # ramificaciones), sumar el area de todos los tramos (franja rectangular
+    # + casquete solo en los 2 tramos extremos) tiene que dar CASI
+    # exactamente el area total del buffer -- no varias veces mas grande,
+    # que es lo que pasaba con el bug de seg_weights.
     net = _net_linea(n_nodos=8, paso=1000.0 / 7)
     ls = Lightning_stat(net, num_events=0, sampling="buffer_reject", buffer_radius=1000.0)
     result = ls.compute_density_check(Ng_real=1.0, segment_length_km=0.2)
     suma_tramos_km2 = sum(t["A_i_km2"] for t in result["tramos"])
-    casquete_km2 = (math.pi * ls.buffer_radius**2) / 1e6
-    assert suma_tramos_km2 + casquete_km2 == pytest.approx(result["A_buffer_km2"], rel=0.05)
+    assert suma_tramos_km2 == pytest.approx(result["A_buffer_km2"], rel=0.05)
+
+
+def test_compute_density_check_un_solo_tramo_terminal_en_ambos_extremos_incluye_el_circulo_completo():
+    # Isla corta de un solo segmento: los dos extremos son terminales (grado
+    # 1), asi que el tramo unico debe llevar el CASQUETE COMPLETO (los dos
+    # medios circulos de cada punta), igual que el capsula analitica exacta
+    # que ya usa seg_weights para un solo segmento.
+    net = _net_dos_nodos(1000.0)
+    ls = Lightning_stat(net, num_events=0, sampling="buffer_reject", buffer_radius=1000.0)
+    result = ls.compute_density_check(Ng_real=1.0, segment_length_km=5.0)  # n=1
+    assert result["n_tramos"] == 1
+    assert result["tramos"][0]["A_i_km2"] == pytest.approx(ls.seg_weights[0] / 1e6)
+
+
+def test_compute_density_check_solo_los_tramos_extremos_llevan_casquete():
+    net = _net_linea(n_nodos=5, paso=250.0)  # 4 segmentos de 250 m
+    ls = Lightning_stat(net, num_events=0, sampling="buffer_reject", buffer_radius=100.0)
+    result = ls.compute_density_check(Ng_real=1.0, segment_length_km=0.25)  # n=4, 1 segmento/tramo
+    assert result["n_tramos"] == 4
+    areas = [t["A_i_km2"] for t in result["tramos"]]
+    rect_only = (2 * 100.0 * 250.0) / 1e6
+    con_casquete = rect_only + (math.pi * 100.0**2 / 2) / 1e6
+    assert areas[0] == pytest.approx(con_casquete)   # primer tramo: extremo real
+    assert areas[1] == pytest.approx(rect_only)       # tramo interno: sin casquete
+    assert areas[2] == pytest.approx(rect_only)       # tramo interno: sin casquete
+    assert areas[3] == pytest.approx(con_casquete)    # ultimo tramo: extremo real
+
+
+def test_compute_density_check_punto_de_ramificacion_no_cuenta_como_terminal():
+    net = _net_estrella()
+    ls = Lightning_stat(net, num_events=0, sampling="buffer_reject", buffer_radius=100.0)
+    result = ls.compute_density_check(Ng_real=1.0, segment_length_km=100.0)  # n=1: los 3 brazos juntos
+    assert result["n_tramos"] == 1
+    total_length_m = sum(math.hypot(bx - ax, by - ay) for (ax, ay, bx, by) in ls.segments)
+    # 3 puntas (A/B/D) son terminales -> 3 medios circulos (1.5 circulos
+    # completos). El centro C, compartido por las 3 lineas (grado 3), NO
+    # suma casquete -- si contara cada extremo de cada segmento a ciegas
+    # (sin detectar grado), saldrian 6 medios circulos en vez de 3.
+    esperado_km2 = (2 * 100.0 * total_length_m + 3 * (math.pi * 100.0**2 / 2)) / 1e6
+    assert result["tramos"][0]["A_i_km2"] == pytest.approx(esperado_km2)
 
 
 def test_compute_density_check_tsim():

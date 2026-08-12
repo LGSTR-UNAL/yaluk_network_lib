@@ -407,12 +407,19 @@ class Lightning_stat:
         postes cada ~130-150 m y r=1000 m eso significa contar 6-7 circulos
         de ~3.14 km^2 en vez de uno solo (bug real reportado por el usuario
         contra el caso 216-13_a01: ~11-12 km^2 por tramo de 1 km en vez de
-        los ~2 km^2 esperados). La franja rectangular ignora los 2 casquetes
-        circulares de los extremos de la linea COMPLETA (no de cada tramo) y
-        el solape en curvas/quiebres cerrados -- por eso sum(A_i) de todos
-        los tramos queda un poco por debajo de A_buffer, no muy por encima.
-        A_buffer (para T_sim) sigue siendo el estimador Monte Carlo exacto
-        de self.Area, no se toca.
+        los ~2 km^2 esperados).
+
+        A cada tramo que contiene un nodo TERMINAL real (un punto que es
+        extremo de un solo segmento -- grado 1, no una bifurcacion) se le
+        suma medio circulo (pi*r^2/2) por cada terminal que contiene: un
+        tramo con los dos extremos de la red entera (isla de un solo
+        segmento) lleva el casquete completo, un tramo interno o un punto de
+        ramificacion (grado >=2, compartido por varios segmentos) no suma
+        nada. Sigue siendo aproximado (el solape en curvas/quiebres
+        cerrados dentro de un tramo, o entre tramos de ramas distintas que
+        quedan geometricamente cerca, no se corrige) pero es sustancialmente
+        mejor que ignorar los extremos del todo. A_buffer (para T_sim) sigue
+        siendo el estimador Monte Carlo exacto de self.Area, no se toca.
         """
         n_segments = len(self.segments)
         seg_lengths_m = [
@@ -447,10 +454,30 @@ class Lightning_stat:
             si = self.nearest_segment_index(L.X_location, L.Y_location)
             counts[seg_to_bucket[si]] += 1
 
+        # Grado de cada punto (extremo de segmento): 1 = terminal real.
+        # Las coordenadas de nodos compartidos son el mismo float reusado
+        # (mismo objeto Node de varias Lines), asi que el redondeo es solo
+        # una salvaguarda, no hace falta tolerancia.
+        endpoint_degree: dict = {}
+        for (ax, ay, bx, by) in self.segments:
+            for pt in ((round(ax, 3), round(ay, 3)), (round(bx, 3), round(by, 3))):
+                endpoint_degree[pt] = endpoint_degree.get(pt, 0) + 1
+
+        def _n_terminales(seg_idx: int) -> int:
+            ax, ay, bx, by = self.segments[seg_idx]
+            return sum(
+                1
+                for pt in ((round(ax, 3), round(ay, 3)), (round(bx, 3), round(by, 3)))
+                if endpoint_degree[pt] == 1
+            )
+
+        half_cap_m2 = math.pi * self.buffer_radius**2 / 2
+
         tramos = []
         for bi, idxs in enumerate(bucket_indices):
             length_m = sum(seg_lengths_m[i] for i in idxs)
-            area_km2 = (2 * self.buffer_radius * length_m) / 1e6
+            n_terminales = sum(_n_terminales(i) for i in idxs)
+            area_km2 = (2 * self.buffer_radius * length_m + n_terminales * half_cap_m2) / 1e6
             m_i = counts[bi]
             tramos.append({
                 "tramo": bi,

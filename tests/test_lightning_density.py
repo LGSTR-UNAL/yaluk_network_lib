@@ -297,6 +297,15 @@ def test_compute_density_check_tsim():
     area_km2 = ls.Area / 1e6
     assert result["T_sim_years"] == pytest.approx(10 / (2.0 * area_km2))
     assert result["A_buffer_km2"] == pytest.approx(area_km2)
+    assert result["L_lin_km"] == pytest.approx(1.0)
+
+
+def test_compute_density_check_l_lin_km_suma_todos_los_segmentos():
+    # 4 segmentos de 250 m = 1000 m = 1.0 km en total, repartidos en 2 tramos.
+    net = _net_linea(n_nodos=5, paso=250.0)
+    ls = Lightning_stat(net, num_events=0, sampling="buffer_reject", buffer_radius=100.0)
+    result = ls.compute_density_check(Ng_real=1.0, segment_length_km=0.5)
+    assert result["L_lin_km"] == pytest.approx(1.0)
 
 
 def test_compute_density_check_ng_real_no_positivo_da_tsim_none():

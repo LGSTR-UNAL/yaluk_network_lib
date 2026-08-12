@@ -122,6 +122,38 @@ def test_compute_density_check_cuenta_rayos_por_tramo_consecutivo():
     assert result["m_t"] == 5
 
 
+def test_compute_density_check_area_no_duplica_circulos_por_segmento_corto():
+    # Un tramo de ~1000 m compuesto por 7 segmentos CORTOS (~143 m c/u, como
+    # los tramos reales entre postes) con buffer_radius=1000 m: el area del
+    # tramo tiene que ser la de una franja rectangular (2*r*L, ~2 km^2 con
+    # r=1km), NO la suma de 7 capsulas individuales (cada una con su propio
+    # circulo pi*r^2 ~3.14 km^2 -- eso daria ~24 km^2, el bug real
+    # reportado por el usuario contra el caso real: se veian ~11-12 km^2
+    # por tramo de 1 km en vez de ~2 km^2).
+    net = _net_linea(n_nodos=8, paso=1000.0 / 7)  # 7 segmentos, ~1000 m total
+    ls = Lightning_stat(net, num_events=0, sampling="buffer_reject", buffer_radius=1000.0)
+    result = ls.compute_density_check(Ng_real=1.0, segment_length_km=1.0)
+    assert result["n_tramos"] == 1
+    area_esperada_km2 = 2 * 1000.0 * 1000.0 / 1e6  # franja rectangular: 2 km^2
+    assert result["tramos"][0]["A_i_km2"] == pytest.approx(area_esperada_km2, rel=0.02)
+
+
+def test_compute_density_check_suma_de_tramos_es_consistente_con_el_buffer_total():
+    # Sanity check pedido a raiz del hallazgo: sumar el area de todos los
+    # tramos (franjas rectangulares) tiene que dar el area total MENOS
+    # exactamente el casquete circular completo (pi*r^2) de los 2 extremos
+    # de la linea entera -- no varias veces MAS grande, que es lo que pasaba
+    # con el bug de seg_weights. En esta linea recta de prueba el casquete
+    # es una fraccion GRANDE del total (radio == longitud de la linea), a
+    # diferencia del caso real (decenas de km) donde es un margen chico.
+    net = _net_linea(n_nodos=8, paso=1000.0 / 7)
+    ls = Lightning_stat(net, num_events=0, sampling="buffer_reject", buffer_radius=1000.0)
+    result = ls.compute_density_check(Ng_real=1.0, segment_length_km=0.2)
+    suma_tramos_km2 = sum(t["A_i_km2"] for t in result["tramos"])
+    casquete_km2 = (math.pi * ls.buffer_radius**2) / 1e6
+    assert suma_tramos_km2 + casquete_km2 == pytest.approx(result["A_buffer_km2"], rel=0.05)
+
+
 def test_compute_density_check_tsim():
     net = _net_dos_nodos(1000.0)
     ls = Lightning_stat(net, num_events=0, sampling="buffer_reject", buffer_radius=100.0)

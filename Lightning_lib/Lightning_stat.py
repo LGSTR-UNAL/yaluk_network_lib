@@ -398,32 +398,43 @@ class Lightning_stat:
         cuantos rayos cayeron mas cerca de cada tramo (Ng_i = m_i/A_i) y
         deriva T_sim = m_t / (Ng_real * A_buffer).
 
-        A_i es la suma de seg_weights (area de capsula) de los segmentos del
-        tramo -- aproximado, sobreestima donde dos segmentos del mismo tramo
-        se solapan (curvas/quiebres cerrados dentro de 2x el radio del
-        buffer). A_buffer (para T_sim) sigue siendo el estimador Monte Carlo
-        exacto de self.Area.
+        A_i es el area de una franja rectangular (2*r*L_tramo), NO la suma de
+        seg_weights de los segmentos reales del tramo: seg_weights existe
+        para PONDERAR EL MUESTREO (cada segmento carga su propio circulo
+        pi*r^2 completo, a proposito, para que segmentos cortos no queden
+        sub-representados al elegir donde cae un rayo) y sumarlos duplica
+        ese circulo una vez por cada segmento real dentro del tramo -- con
+        postes cada ~130-150 m y r=1000 m eso significa contar 6-7 circulos
+        de ~3.14 km^2 en vez de uno solo (bug real reportado por el usuario
+        contra el caso 216-13_a01: ~11-12 km^2 por tramo de 1 km en vez de
+        los ~2 km^2 esperados). La franja rectangular ignora los 2 casquetes
+        circulares de los extremos de la linea COMPLETA (no de cada tramo) y
+        el solape en curvas/quiebres cerrados -- por eso sum(A_i) de todos
+        los tramos queda un poco por debajo de A_buffer, no muy por encima.
+        A_buffer (para T_sim) sigue siendo el estimador Monte Carlo exacto
+        de self.Area, no se toca.
         """
         n_segments = len(self.segments)
-        total_length_km = sum(
+        seg_lengths_m = [
             math.hypot(bx - ax, by - ay) for (ax, ay, bx, by) in self.segments
-        ) / 1000.0
+        ]
+        total_length_km = sum(seg_lengths_m) / 1000.0
 
         if segment_length_km and segment_length_km > 0 and total_length_km > 0:
             n = max(1, min(n_segments, round(total_length_km / segment_length_km)))
         else:
             n = 1
 
-        total_weight = sum(self.seg_weights)
-        target = total_weight / n
+        total_length_m = sum(seg_lengths_m)
+        target = total_length_m / n
         bucket_indices = []
-        current, current_w = [], 0.0
-        for i, w in enumerate(self.seg_weights):
+        current, current_len = [], 0.0
+        for i, seg_len in enumerate(seg_lengths_m):
             current.append(i)
-            current_w += w
-            if current_w >= target and len(bucket_indices) < n - 1:
+            current_len += seg_len
+            if current_len >= target and len(bucket_indices) < n - 1:
                 bucket_indices.append(current)
-                current, current_w = [], 0.0
+                current, current_len = [], 0.0
         bucket_indices.append(current)
 
         seg_to_bucket = {}
@@ -438,8 +449,8 @@ class Lightning_stat:
 
         tramos = []
         for bi, idxs in enumerate(bucket_indices):
-            area_m2 = sum(self.seg_weights[i] for i in idxs)
-            area_km2 = area_m2 / 1e6
+            length_m = sum(seg_lengths_m[i] for i in idxs)
+            area_km2 = (2 * self.buffer_radius * length_m) / 1e6
             m_i = counts[bi]
             tramos.append({
                 "tramo": bi,

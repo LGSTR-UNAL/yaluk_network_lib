@@ -44,9 +44,21 @@ class Lightning_stat:
         buffer_radius: float = 1000.0,
         max_tries: int = 50000,
         database_buffer=None,
+        buffer_area_rel_error: float = 0.01,
+        buffer_area_max_samples: int = 200000,
     ):
 
         self.Model: StatI_ModelType = M
+
+        # Config del estimador dinamico de _compute_buffer_area: valores
+        # invalidos (<=0, o None si viene de un sim_settings mal armado)
+        # caen al default de siempre, en vez de propagar el error.
+        self.buffer_area_rel_error: float = (
+            buffer_area_rel_error if buffer_area_rel_error and buffer_area_rel_error > 0 else 0.01
+        )
+        self.buffer_area_max_samples: int = (
+            buffer_area_max_samples if buffer_area_max_samples and buffer_area_max_samples > 0 else 200000
+        )
 
         # Spatial boundaries
         self.Xmin: float = net.xmin - dist
@@ -114,7 +126,10 @@ class Lightning_stat:
         # sobre el corredor, asi que tambien usa el area del rectangulo.
         bbox_area = (self.Xmax - self.Xmin) * (self.Ymax - self.Ymin)
         uses_corridor = M in ("ProbDistribution", "Database") and self.sampling != "bbox"
-        self.Area: float = self._compute_buffer_area() if uses_corridor else bbox_area
+        self.Area: float = (
+            self._compute_buffer_area(self.buffer_area_rel_error, self.buffer_area_max_samples)
+            if uses_corridor else bbox_area
+        )
 
     # ---------------------------------------------------------
     # Statistical lightning generation
@@ -314,12 +329,24 @@ class Lightning_stat:
         th = rng.random() * 2 * math.pi
         return cx + rr * math.cos(th), cy + rr * math.sin(th)
 
-    def _compute_buffer_area(self, n: int = 200000, batch: int = 10000) -> float:
-        """Estimador Monte Carlo del area del corredor, vectorizado con NumPy.
-        La version en Python puro (bucle de n*len(segments) llamadas a
-        _dist_point_to_segment) tardaba ~57s con ~289 segmentos (caso real);
-        esta version tarda ~4s para el mismo caso, procesando en lotes para
-        no materializar un array (n x num_segmentos) completo en memoria."""
+    def _compute_buffer_area(
+        self, rel_error: float = 0.01, max_samples: int = 200000, batch: int = 10000,
+    ) -> float:
+        """Estimador Monte Carlo del area del corredor, vectorizado con NumPy,
+        DINAMICO: corre por lotes y para en cuanto el error estandar de la
+        estimacion acumulada cae debajo de `rel_error` (relativo al area
+        estimada), con un minimo de 2 lotes antes de evaluar el corte (evita
+        parar temprano con una desviacion estandar artificialmente chica por
+        pocas muestras) y un tope duro en `max_samples` para corredores muy
+        chicos frente al bounding box (ahi el evento "cae dentro" es raro y
+        el error converge lento). Antes corria siempre a un `n` fijo de
+        200000; la version en Python puro (bucle de n*len(segments) llamadas
+        a _dist_point_to_segment) tardaba ~57s con ~289 segmentos (caso
+        real), esta version vectorizada tardaba ~4s para el mismo caso
+        siempre a n fijo -- ahora puede terminar antes si el corredor es
+        geometricamente simple.
+        self._buffer_area_n_used queda con el numero de muestras usadas,
+        para diagnostico/tests."""
         bbox_area = (self.Xmax - self.Xmin) * (self.Ymax - self.Ymin)
         seg = np.array(self.segments)          # (m,4): ax,ay,bx,by
         ax, ay, bx, by = seg[:, 0], seg[:, 1], seg[:, 2], seg[:, 3]
@@ -329,10 +356,11 @@ class Lightning_stat:
 
         rng = self._rng
         inside = 0
-        remaining = n
-        while remaining > 0:
-            m = min(batch, remaining)
-            remaining -= m
+        n_done = 0
+        n_batches = 0
+        min_batches = 2
+        while n_done < max_samples:
+            m = min(batch, max_samples - n_done)
             px = self.Xmin + np.array([rng.random() for _ in range(m)]) * (self.Xmax - self.Xmin)
             py = self.Ymin + np.array([rng.random() for _ in range(m)]) * (self.Ymax - self.Ymin)
             px_b, py_b = px[:, None], py[:, None]      # (m,1) vs (1,num_seg)
@@ -343,7 +371,98 @@ class Lightning_stat:
             dist = np.hypot(px_b - cx, py_b - cy)        # (m, num_seg)
             min_dist = dist.min(axis=1)
             inside += int(np.count_nonzero(min_dist <= self.buffer_radius))
-        return bbox_area * inside / n
+            n_done += m
+            n_batches += 1
+
+            p_hat = inside / n_done
+            if n_batches >= min_batches and p_hat > 0:
+                area_hat = bbox_area * p_hat
+                se_area = bbox_area * math.sqrt(p_hat * (1 - p_hat) / n_done)
+                if se_area / area_hat < rel_error:
+                    break
+
+        self._buffer_area_n_used = n_done
+        return bbox_area * inside / n_done
+
+    def nearest_segment_index(self, x: float, y: float) -> int:
+        """Indice (en self.segments/self.seg_weights) del segmento mas
+        cercano al punto (x,y). Usado por compute_density_check para asignar
+        cada rayo ya generado a su tramo."""
+        dists = [_dist_point_to_segment(x, y, *s) for s in self.segments]
+        return min(range(len(dists)), key=lambda i: dists[i])
+
+    def compute_density_check(self, Ng_real: float, segment_length_km: float) -> dict:
+        """Chequeo de homogeneidad de la campana de rayos ya generada
+        (self.Lightnings): parte self.segments en tramos consecutivos (mismo
+        orden que net.Lines) de longitud objetivo `segment_length_km`, cuenta
+        cuantos rayos cayeron mas cerca de cada tramo (Ng_i = m_i/A_i) y
+        deriva T_sim = m_t / (Ng_real * A_buffer).
+
+        A_i es la suma de seg_weights (area de capsula) de los segmentos del
+        tramo -- aproximado, sobreestima donde dos segmentos del mismo tramo
+        se solapan (curvas/quiebres cerrados dentro de 2x el radio del
+        buffer). A_buffer (para T_sim) sigue siendo el estimador Monte Carlo
+        exacto de self.Area.
+        """
+        n_segments = len(self.segments)
+        total_length_km = sum(
+            math.hypot(bx - ax, by - ay) for (ax, ay, bx, by) in self.segments
+        ) / 1000.0
+
+        if segment_length_km and segment_length_km > 0 and total_length_km > 0:
+            n = max(1, min(n_segments, round(total_length_km / segment_length_km)))
+        else:
+            n = 1
+
+        total_weight = sum(self.seg_weights)
+        target = total_weight / n
+        bucket_indices = []
+        current, current_w = [], 0.0
+        for i, w in enumerate(self.seg_weights):
+            current.append(i)
+            current_w += w
+            if current_w >= target and len(bucket_indices) < n - 1:
+                bucket_indices.append(current)
+                current, current_w = [], 0.0
+        bucket_indices.append(current)
+
+        seg_to_bucket = {}
+        for bi, idxs in enumerate(bucket_indices):
+            for i in idxs:
+                seg_to_bucket[i] = bi
+
+        counts = [0] * len(bucket_indices)
+        for L in self.Lightnings:
+            si = self.nearest_segment_index(L.X_location, L.Y_location)
+            counts[seg_to_bucket[si]] += 1
+
+        tramos = []
+        for bi, idxs in enumerate(bucket_indices):
+            area_m2 = sum(self.seg_weights[i] for i in idxs)
+            area_km2 = area_m2 / 1e6
+            m_i = counts[bi]
+            tramos.append({
+                "tramo": bi,
+                "m_i": m_i,
+                "A_i_km2": area_km2,
+                "Ng_i": (m_i / area_km2) if area_km2 else None,
+            })
+
+        A_buffer_km2 = self.Area / 1e6
+        m_t = len(self.Lightnings)
+        T_sim_years = (
+            m_t / (Ng_real * A_buffer_km2) if Ng_real and Ng_real > 0 and A_buffer_km2 else None
+        )
+
+        return {
+            "Ng_real": Ng_real,
+            "NgSegmentLength_km": segment_length_km,
+            "m_t": m_t,
+            "A_buffer_km2": A_buffer_km2,
+            "T_sim_years": T_sim_years,
+            "n_tramos": len(bucket_indices),
+            "tramos": tramos,
+        }
 
     # ---------------------------------------------------------
     # File creation

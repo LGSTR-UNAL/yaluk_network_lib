@@ -25,7 +25,7 @@ def write_misc_file(pr_settings, network, buffer=False):
         misc_file.write(f"20E-6 % Tiempo maximo\n".encode())
         misc_file.write(f"40 % Número de puntos\n".encode())
         misc_file.write(
-            f"{int(not pr_settings.Soil_settings.perfect_soil)} % Conductividad activa\n".encode()
+            f"{int(not pr_settings.Soil_settings.Perfectsoil)} % Conductividad activa\n".encode()
         )
         misc_file.write(
             f"{pr_settings.Soil_settings.Conductivity:0.00E} % Conductividad del terreno o(s / m)\n".encode()
@@ -56,7 +56,7 @@ def write_misc_file(pr_settings, network, buffer=False):
         file.write(f"20E-6 % Tiempo maximo\n")
         file.write(f"40 % Número de puntos\n")
         file.write(
-            f"{int(not pr_settings.Soil_settings.perfect_soil)} % Conductividad activa\n"
+            f"{int(not pr_settings.Soil_settings.Perfectsoil)} % Conductividad activa\n"
         )
         file.write(
             f"{pr_settings.Soil_settings.Conductivity:0.00E} % Conductividad del terreno o(s / m)\n"

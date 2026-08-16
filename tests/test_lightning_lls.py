@@ -92,10 +92,68 @@ def _csv_lls(rows):
     return io.BytesIO(("\n".join(lines) + "\n").encode())
 
 
+def test_load_from_database_alinea_con_planar_epsg_correcto():
+    """Un punto LLS ubicado exactamente en la posicion geografica real de
+    InitXY (proyectada con el EPSG real del caso) debe dar X0,Y0 ~ (0,0) --
+    prueba positiva de que LoadFromDatabase ya no mezcla sistemas de
+    coordenadas distintos."""
+    from yaluk_network_lib.Network_lib.GeoTransform import CoordTransf
+
+    lat, lon = 4.6097, -74.0817  # punto real, valido para cualquier EPSG colombiano
+    planar_epsg = 3116
+    x_init, y_init = CoordTransf(dst_epsg=planar_epsg).to_projected(lat, lon)
+
+    net = _net_dos_nodos()
+    net.InitXY = nl.PointXY(x_init, y_init)
+    buffer = _csv_lls([(lat, lon, 20.0, "2026-01-01T00:00:00Z")])
+
+    # M="Database" dispara LoadFromDatabase(database_buffer) dentro del
+    # propio __init__ (Lightning_stat.py:126-128) -- no se llama aparte.
+    ls_obj = Lightning_stat(
+        net, M="Database", database_buffer=buffer,
+        buffer_radius=10_000_000,  # sin filtrar por distancia en este test
+        planar_epsg=planar_epsg,
+    )
+
+    assert len(ls_obj.Lightnings) == 1
+    assert ls_obj.Lightnings[0].X_location == pytest.approx(0.0, abs=1e-3)
+    assert ls_obj.Lightnings[0].Y_location == pytest.approx(0.0, abs=1e-3)
+
+
+def test_load_from_database_epsg_incorrecto_da_offset_de_miles_de_km():
+    """Documenta el bug original: si LoadFromDatabase usa un EPSG distinto
+    del que realmente gobierna InitXY (el default viejo, hardcodeado a
+    9377), el mismo punto LLS da un desplazamiento de miles de kilometros
+    en vez de (0,0). Offset real medido entre EPSG:3116 y EPSG:9377 para
+    este punto: ~4024 km."""
+    import math
+    from yaluk_network_lib.Network_lib.GeoTransform import CoordTransf
+
+    lat, lon = 4.6097, -74.0817
+    x_init, y_init = CoordTransf(dst_epsg=3116).to_projected(lat, lon)  # InitXY real, en 3116
+
+    net = _net_dos_nodos()
+    net.InitXY = nl.PointXY(x_init, y_init)
+    buffer = _csv_lls([(lat, lon, 20.0, "2026-01-01T00:00:00Z")])
+
+    ls_obj = Lightning_stat(
+        net, M="Database", database_buffer=buffer,
+        buffer_radius=10_000_000,
+        planar_epsg=9377,  # EPSG viejo, incorrecto para este caso
+    )
+
+    assert len(ls_obj.Lightnings) == 1
+    offset = math.hypot(ls_obj.Lightnings[0].X_location, ls_obj.Lightnings[0].Y_location)
+    assert offset > 1_000_000  # metros -- muy por encima de cualquier corredor real
+
+
 def test_load_from_database_filtra_por_corredor():
     net = _net_dos_nodos()  # linea (0,0)-(1000,0), InitLatLong = Network() default
     from yaluk_network_lib.Network_lib.GeoTransform import CoordTransf
-    transf = CoordTransf()
+    # dst_epsg=3116 -- debe coincidir con el default de Lightning_stat
+    # (planar_epsg) para que el round-trip lat/lon -> XY relativo sea
+    # consistente con el que usa LoadFromDatabase internamente.
+    transf = CoordTransf(dst_epsg=3116)
 
     def latlon_for_xy(x_rel, y_rel):
         # inverso de to_projected, para fabricar filas LLS en una posicion XY
@@ -126,7 +184,10 @@ def test_load_from_database_filtra_por_corredor():
 def test_load_from_database_descarta_filas_invalidas():
     net = _net_dos_nodos()
     from yaluk_network_lib.Network_lib.GeoTransform import CoordTransf
-    transf = CoordTransf()
+    # dst_epsg=3116 -- debe coincidir con el default de Lightning_stat
+    # (planar_epsg) para que el round-trip lat/lon -> XY relativo sea
+    # consistente con el que usa LoadFromDatabase internamente.
+    transf = CoordTransf(dst_epsg=3116)
     x_abs, y_abs = 500.0 + net.InitXY.X, 100.0 + net.InitXY.Y
     lat_ok, lon_ok = transf.to_geographic(x_abs, y_abs)
 
@@ -147,7 +208,10 @@ def test_load_from_database_descarta_filas_con_nan():
     # lat/lon NaN pasaria el filtro del corredor silenciosamente.
     net = _net_dos_nodos()
     from yaluk_network_lib.Network_lib.GeoTransform import CoordTransf
-    transf = CoordTransf()
+    # dst_epsg=3116 -- debe coincidir con el default de Lightning_stat
+    # (planar_epsg) para que el round-trip lat/lon -> XY relativo sea
+    # consistente con el que usa LoadFromDatabase internamente.
+    transf = CoordTransf(dst_epsg=3116)
     x_abs, y_abs = 500.0 + net.InitXY.X, 100.0 + net.InitXY.Y
     lat_ok, lon_ok = transf.to_geographic(x_abs, y_abs)
 
@@ -164,7 +228,10 @@ def test_load_from_database_descarta_filas_con_nan():
 def test_load_from_database_cero_rayos_en_corredor_lanza_valueerror():
     net = _net_dos_nodos()
     from yaluk_network_lib.Network_lib.GeoTransform import CoordTransf
-    transf = CoordTransf()
+    # dst_epsg=3116 -- debe coincidir con el default de Lightning_stat
+    # (planar_epsg) para que el round-trip lat/lon -> XY relativo sea
+    # consistente con el que usa LoadFromDatabase internamente.
+    transf = CoordTransf(dst_epsg=3116)
     x_abs, y_abs = 500.0 + net.InitXY.X, 50000.0 + net.InitXY.Y  # muy lejos
     lat_lejos, lon_lejos = transf.to_geographic(x_abs, y_abs)
 

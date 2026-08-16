@@ -47,6 +47,7 @@ class Lightning_stat:
         replay_df=None,
         buffer_area_rel_error: float = 0.01,
         buffer_area_max_samples: int = 200000,
+        planar_epsg: int = 3116,
     ):
 
         self.Model: StatI_ModelType = M
@@ -60,6 +61,11 @@ class Lightning_stat:
         self.buffer_area_max_samples: int = (
             buffer_area_max_samples if buffer_area_max_samples and buffer_area_max_samples > 0 else 200000
         )
+        # EPSG plano real del caso (structures.csv/GeoJSON) -- usado por
+        # LoadFromDatabase para alinear la ingesta LLS con net.InitXY, que
+        # esta en este mismo sistema (ver spec
+        # 2026-08-16-epsg-configurable-ingesta-lls-design.md).
+        self.planar_epsg: int = planar_epsg
 
         # Spatial boundaries
         self.Xmin: float = net.xmin - dist
@@ -222,7 +228,7 @@ class Lightning_stat:
         df = pd.read_csv(buffer)
         df.columns = df.columns.str.strip()
 
-        transf = CoordTransf()
+        transf = CoordTransf(dst_epsg=self.planar_epsg)
         accepted = []
         dropped = 0
         for _, row in df.iterrows():

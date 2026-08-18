@@ -898,7 +898,11 @@ class Lightning_stat:
         if not self.Lightnings:
             return
 
-        from Network_lib.Network import _RUSCK_K, _SPEED_OF_LIGHT, _DEFAULT_CHANNEL_VELOCITY
+        from yaluk_network_lib.Network_lib.Network import (
+            _RUSCK_K,
+            _SPEED_OF_LIGHT,
+            _DEFAULT_CHANNEL_VELOCITY,
+        )
 
         ax, ay, bx, by, dx, dy, seg2, seg2_safe = self._segment_matrix()
         lines = list(net.Lines)

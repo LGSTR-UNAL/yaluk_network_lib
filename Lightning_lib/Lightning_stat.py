@@ -561,24 +561,35 @@ class Lightning_stat:
         cuantos rayos cayeron mas cerca de cada tramo (Ng_i = m_i/A_i) y
         deriva T_sim = m_t / (Ng_real * A_buffer).
 
-        A_i es el area de una franja rectangular (2*r*L_tramo), NO la suma de
-        seg_weights de los segmentos reales del tramo: seg_weights existe
-        para PONDERAR EL MUESTREO (cada segmento carga su propio circulo
-        pi*r^2 completo, a proposito, para que segmentos cortos no queden
-        sub-representados al elegir donde cae un rayo) y sumarlos duplica
-        ese circulo una vez por cada segmento real dentro del tramo -- con
-        postes cada ~130-150 m y r=1000 m eso significa contar 6-7 circulos
-        de ~3.14 km^2 en vez de uno solo (bug real reportado por el usuario
-        contra el caso 216-13_a01: ~11-12 km^2 por tramo de 1 km en vez de
-        los ~2 km^2 esperados).
+        A_i es el area REAL de la union geometrica de los segmentos del
+        tramo (`_cluster_union_area_m2`, via `shapely`), no una franja
+        rectangular (2*r*L) ni la suma de seg_weights de sus segmentos
+        reales -- seg_weights existe para PONDERAR EL MUESTREO (cada
+        segmento carga su propio circulo pi*r^2 completo, a proposito, para
+        que segmentos cortos no queden sub-representados al elegir donde
+        cae un rayo), no para medir area.
 
-        A cada tramo que contiene un nodo TERMINAL real (un punto que es
-        extremo de un solo segmento -- grado 1, no una bifurcacion) se le
-        suma medio circulo (pi*r^2/2) por cada terminal que contiene: un
-        tramo con los dos extremos de la red entera (isla de un solo
-        segmento) lleva el casquete completo, un tramo interno o un punto de
-        ramificacion (grado >=2, compartido por varios segmentos) no suma
-        nada.
+        Historia (3 correcciones reales, todas sobre la MISMA funcion de
+        area, cada una encontrada verificando contra una corrida real):
+        1. (Fase 1, 2026-08-11) sumar seg_weights por tramo duplicaba el
+           circulo de cada segmento corto -- ~11-12 km^2 por tramo de 1 km
+           en vez de los ~2 km^2 esperados. Reemplazado por la franja
+           rectangular (2*r*L) + casquete solo en terminales reales.
+        2. (2026-08-18) la franja rectangular es correcta SOLO si el tramo
+           es perfectamente recto -- una curva real (la red sigue el trazado
+           de una via/terreno) hace que el buffer real se solape consigo
+           mismo, y la franja lo sobreestima. Reemplazada por
+           `_cluster_union_area_m2` para TODOS los tramos (no solo los
+           clusters de bifurcacion) -- ver su docstring para la
+           verificacion numerica completa (linemerge + join redondo +
+           circulo en hubs/terminales). Encontrado en una corrida real de
+           20000 rayos con Ng_i hasta -47% por debajo de Ng_real en tramos
+           SIN ninguna bifurcacion cerca.
+        3. (2026-08-18, misma investigacion) `_cluster_union_area_m2` en si
+           tambien subestimaba en el HUB de una bifurcacion real (3+ ramas
+           que no colapsan en una sola linea via `linemerge`) -- corregido
+           agregando un circulo tambien ahi, no solo en los terminales
+           reales de la red.
 
         `excluded_terminal_points`: set opcional de (x,y) (mismo redondeo a
         3 decimales que el grado interno) que NUNCA cuentan como terminal
@@ -590,28 +601,10 @@ class Lightning_stat:
         de agregar el casquete (medido contra el caso real: +27% -> +96%).
 
         Los segmentos cerca de una bifurcacion real (nodo de grado >=3) se
-        agrupan en su PROPIO tramo (uno por cluster de bifurcacion), con el
-        area calculada por union geometrica real (`shapely`) en vez de la
-        franja rectangular -- evita sumar el solape entre ramas cercanas
-        entre si, que es la limitacion estructural que quedaba tras agregar
-        el casquete de terminales (medido contra el caso real: redes con
-        ramificaciones sobreestimaban +27% a +88%). El resto de la linea
-        (tramos derechos, lejos de cualquier bifurcacion) sigue con la
-        aproximacion rectangular + casquete de siempre.
-
-        El reparto de rayos entre ramas de un mismo cluster es exacto (cada
-        rayo va al segmento mas cercano). El area del cluster tampoco pone
-        casquete redondo en un corte artificial (por `cluster_radius` o por
-        `excluded_terminal_points`): `_cluster_union_area_m2` bufferea cada
-        segmento con `cap_style='flat'` y agrega un circulo completo aparte
-        SOLO en los extremos que son terminales reales (grado 1, no
-        excluidos) -- antes de este fix, cualquier extremo del cluster
-        recibia el casquete redondo por defecto de `shapely.buffer()`
-        estuviera o no cortado artificialmente, sobreestimando el area en
-        ~110% en un caso de 3 ramas cortadas antes de llegar a un terminal
-        real (verificado numericamente, ver test de regresion). A_buffer
-        (para T_sim) sigue siendo el estimador Monte Carlo exacto de
-        self.Area, no se toca.
+        agrupan en su PROPIO tramo (uno por cluster de bifurcacion) -- el
+        reparto de rayos entre sus ramas es exacto (cada rayo va al
+        segmento mas cercano). A_buffer (para T_sim) sigue siendo el
+        estimador Monte Carlo exacto de self.Area, no se toca.
         """
         excluded_terminal_points = {
             (round(x, 3), round(y, 3)) for (x, y) in (excluded_terminal_points or ())
@@ -628,14 +621,6 @@ class Lightning_stat:
         for (ax, ay, bx, by) in self.segments:
             for pt in ((round(ax, 3), round(ay, 3)), (round(bx, 3), round(by, 3))):
                 endpoint_degree[pt] = endpoint_degree.get(pt, 0) + 1
-
-        def _n_terminales(seg_idx: int) -> int:
-            ax, ay, bx, by = self.segments[seg_idx]
-            return sum(
-                1
-                for pt in ((round(ax, 3), round(ay, 3)), (round(bx, 3), round(by, 3)))
-                if endpoint_degree[pt] == 1 and pt not in excluded_terminal_points
-            )
 
         cluster_groups = self._branch_clusters(endpoint_degree, seg_lengths_m)
         segments_in_cluster = {i for group in cluster_groups for i in group}
@@ -684,8 +669,6 @@ class Lightning_stat:
             key = seg_to_tramo[si]
             counts[key] = counts.get(key, 0) + 1
 
-        half_cap_m2 = math.pi * self.buffer_radius**2 / 2
-
         A_buffer_km2 = self.Area / 1e6
         m_t = len(self.Lightnings)
         T_sim_years = (
@@ -706,9 +689,18 @@ class Lightning_stat:
 
         tramos = []
         for bi, idxs in enumerate(bucket_indices):
-            length_m = sum(seg_lengths_m[i] for i in idxs)
-            n_terminales = sum(_n_terminales(i) for i in idxs)
-            area_km2 = (2 * self.buffer_radius * length_m + n_terminales * half_cap_m2) / 1e6
+            # Area por union geometrica real (linemerge + join redondo +
+            # circulo en terminales/hubs internos), NO la franja rectangular
+            # 2*r*L de antes: un tramo "normal" (sin bifurcacion cerca)
+            # puede seguir teniendo una curva real (la red sigue el trazado
+            # de una via/terreno), y la franja recta sobreestimaba su area
+            # en esos casos -- hallazgo real de 2026-08-18, corrida de
+            # 20000 rayos con Ng_i hasta -47% por debajo de Ng_real en
+            # tramos sin ninguna bifurcacion. Ver el docstring de
+            # `_cluster_union_area_m2` para la verificacion numerica.
+            area_km2 = self._cluster_union_area_m2(
+                idxs, endpoint_degree=endpoint_degree, excluded_terminal_points=excluded_terminal_points,
+            ) / 1e6
             m_i = counts.get(("normal", bi), 0)
             tramos.append({
                 "tramo": len(tramos),
@@ -807,41 +799,88 @@ class Lightning_stat:
         self, segment_indices, endpoint_degree=None, excluded_terminal_points=None,
     ) -> float:
         """Area real (m^2) de la union de los buffers de los segmentos
-        indicados -- reemplaza la suma de franjas independientes por la
-        geometria real (shapely), evitando contar el solape entre ramas mas
-        de una vez.
+        indicados -- geometria real (shapely), sin importar si forman una
+        cadena recta, una curva, o un cluster con bifurcacion real.
 
-        Los segmentos se bufferean con cap_style='flat' (sin casquete
-        redondo en sus extremos): la mayoria de los extremos de un cluster
-        son cortes ARTIFICIALES de `_branch_clusters` (limitados a
-        `cluster_radius`), no terminales reales de la red -- bufferear con
-        el cap_style redondo por defecto de shapely le agregaba un
-        semicirculo de mas en CADA corte artificial (medido: ~110% de
-        sobreestimacion en un caso de 3 ramas, cada una cortada antes de
-        llegar a un terminal real). Los extremos que SI son terminales
-        reales (grado 1 en toda la red, no marcados como punto de corte de
-        particion) llevan su propio circulo completo agregado aparte, igual
-        que el casquete de terminal que ya usan los tramos normales."""
-        from shapely.geometry import LineString, Point
-        from shapely.ops import unary_union
+        Historia (investigacion 2026-08-18, corrida real de 20000 rayos con
+        Ng_i hasta -47% por debajo de Ng_real en tramos NORMALES, no solo en
+        clusters): bufferear cada segmento por separado con cap_style='flat'
+        y unirlos (el fix anterior, b1f18f1) evita el doble conteo en el
+        interior de una curva/bifurcacion, pero deja un HUECO real del lado
+        de afuera de cualquier curva -- un cap 'flat' en el extremo de cada
+        segmento no llena la cuna entre dos segmentos que cambian de
+        direccion; verificado numericamente contra la referencia correcta
+        (bufferear la polilinea COMPLETA de una vez con join_style='round'):
+        el enfoque anterior subestima el area entre ~5% (curvas suaves) y
+        ~35-55% (curvas cerradas), consistente con la sobreestimacion de
+        densidad -- Ng_i de-- MAS de lo esperado en tramos con curvas
+        pronunciadas, exactamente el patron reportado por el usuario.
+
+        Fix: `shapely.ops.linemerge` fusiona primero las cadenas de
+        segmentos realmente conectadas (sin bifurcacion) en una sola
+        polilinea cada una; bufferear esa polilinea ya fusionada con
+        join_style='round' (ademas de cap_style='flat' en sus dos puntas)
+        reproduce EXACTO el area de una curva sin necesitar ningun circulo
+        extra en sus vertices internos (verificado: coincide al 0.000% con
+        la referencia, para cualquier angulo de curva).
+
+        En cada extremo que SI es un terminal real (grado 1 en toda la red,
+        no marcado como punto de corte de particion) se agrega un
+        SEMICIRCULO -- no un circulo completo -- recortado al lado de
+        AFUERA del segmento (perpendicular a su propia direccion en ese
+        punto). Un circulo completo centrado en el terminal, cuando el
+        tramo es mas corto que buffer_radius (comun: postes cada ~130-150 m
+        vs. buffer_radius~1000 m), se extiende MAS ALLA del propio extremo
+        del tramo hacia el lado de ADENTRO -- invadiendo el territorio del
+        tramo VECINO y duplicando esa area al sumar todos los tramos (bug
+        real encontrado en la misma investigacion: rompia la suma total ~45%
+        por encima del area real del buffer). El semicirculo, por
+        construccion, nunca se extiende hacia el lado de adentro -- mismo
+        resultado que el casquete de medio circulo que ya usaba la franja
+        rectangular original, ahora tambien correcto para tramos curvos."""
+        from shapely.geometry import LineString, MultiLineString, Point, Polygon
+        from shapely.ops import linemerge, unary_union
 
         endpoint_degree = endpoint_degree or {}
         excluded_terminal_points = excluded_terminal_points or set()
 
-        shapes = [
-            LineString([(ax, ay), (bx, by)]).buffer(self.buffer_radius, cap_style="flat")
+        def _half_disk(center, direction, r):
+            cx, cy = center
+            dx, dy = direction
+            norm = math.hypot(dx, dy)
+            dx, dy = dx / norm, dy / norm
+            px, py = -dy, dx
+            big = 4 * r
+            half_plane = Polygon([
+                (cx - px * big, cy - py * big),
+                (cx + px * big, cy + py * big),
+                (cx + px * big + dx * big, cy + py * big + dy * big),
+                (cx - px * big + dx * big, cy - py * big + dy * big),
+            ])
+            return Point(center).buffer(r, quad_segs=32).intersection(half_plane)
+
+        lines = [
+            LineString([(ax, ay), (bx, by)])
             for i in segment_indices
             for (ax, ay, bx, by) in [self.segments[i]]
         ]
+        merged = linemerge(MultiLineString([list(l.coords) for l in lines]))
+        pieces = list(merged.geoms) if hasattr(merged, "geoms") else [merged]
 
-        cluster_points = set()
-        for i in segment_indices:
-            ax, ay, bx, by = self.segments[i]
-            cluster_points.add((round(ax, 3), round(ay, 3)))
-            cluster_points.add((round(bx, 3), round(by, 3)))
-        for pt in cluster_points:
-            if endpoint_degree.get(pt) == 1 and pt not in excluded_terminal_points:
-                shapes.append(Point(pt).buffer(self.buffer_radius))
+        shapes = [
+            piece.buffer(self.buffer_radius, cap_style="flat", join_style="round")
+            for piece in pieces
+        ]
+
+        for piece in pieces:
+            for pt, neighbor in (
+                (piece.coords[0], piece.coords[1]),
+                (piece.coords[-1], piece.coords[-2]),
+            ):
+                key = (round(pt[0], 3), round(pt[1], 3))
+                if endpoint_degree.get(key) == 1 and key not in excluded_terminal_points:
+                    direction = (pt[0] - neighbor[0], pt[1] - neighbor[1])
+                    shapes.append(_half_disk(pt, direction, self.buffer_radius))
 
         return unary_union(shapes).area
 

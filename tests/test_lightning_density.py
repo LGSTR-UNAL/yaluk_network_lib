@@ -345,3 +345,21 @@ def test_compute_density_check_segment_length_no_positivo_da_un_solo_tramo():
     result = ls.compute_density_check(Ng_real=1.0, segment_length_km=0)
     assert result["n_tramos"] == 1
     assert result["tramos"][0]["m_i"] == 2
+
+
+def test_compute_density_check_no_genera_tramo_fantasma_vacio():
+    # Hallazgo real (caso 216-13_a04/a06 del caso real, reproducido aca sin
+    # depender de esa geometria): el bucketing por longitud acumulada hace
+    # `bucket_indices.append(current)` sin condicion al final del bucle --
+    # si el ultimo flush intermedio (el que llega a n-1 buckets) consume
+    # justo el ultimo segmento de la red, "current" queda vacio y se agrega
+    # como un tramo fantasma (m_i=0, A_i_km2=0.0), inflando n_tramos sin
+    # representar ningun segmento real. Repro minimo: 4 segmentos iguales
+    # (250 m c/u, 1000 m total) pidiendo 3 tramos via segment_length_km=1/3
+    # -> bucketize da [2, 2, 0] antes del fix.
+    net = _net_linea(n_nodos=5, paso=250.0)  # 4 segmentos de 250 m, linea de 1000 m
+    ls = Lightning_stat(net, num_events=0, sampling="buffer_reject", buffer_radius=100.0)
+    ls.Lightnings = [_rayo(10, 0), _rayo(900, 0)]
+    result = ls.compute_density_check(Ng_real=1.0, segment_length_km=1.0 / 3.0)
+    assert all(t["A_i_km2"] > 0 for t in result["tramos"])
+    assert result["n_tramos"] == 2  # 2 tramos reales de 2 segmentos c/u, no 3 con uno vacio

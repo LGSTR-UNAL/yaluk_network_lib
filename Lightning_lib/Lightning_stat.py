@@ -656,7 +656,13 @@ class Lightning_stat:
                 if current_len >= target and len(bucket_indices) < n - 1:
                     bucket_indices.append(current)
                     current, current_len = [], 0.0
-            bucket_indices.append(current)
+            # bug real (encontrado revisando el calculo de areas del caso
+            # real): si el ultimo flush de arriba consume justo el ultimo
+            # segmento de `remaining`, `current` queda vacio -- agregarlo
+            # igual crea un tramo fantasma (m_i=0, A_i_km2=0.0) que no
+            # representa ningun segmento real, solo infla n_tramos.
+            if current:
+                bucket_indices.append(current)
 
         seg_to_tramo: dict = {}
         for bi, idxs in enumerate(bucket_indices):

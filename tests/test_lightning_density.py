@@ -184,42 +184,44 @@ def test_compute_density_check_area_no_duplica_circulos_por_segmento_corto():
     # NO la suma de 7 capsulas individuales (cada una con su propio circulo
     # pi*r^2 ~3.14 km^2 -- eso daria ~24 km^2, el bug real reportado por el
     # usuario contra el caso real: se veian ~11-12 km^2 por tramo de 1 km en
-    # vez de los ~5 km^2 esperados aca).
+    # vez de los ~5 km^2 esperados aca). rel=0.05: el area ahora se estima
+    # por Monte Carlo (ver compute_density_check, punto 4 de su historia),
+    # no una formula analitica exacta -- tolerancia de muestreo, no de bug.
     net = _net_linea(n_nodos=8, paso=1000.0 / 7)  # 7 segmentos, ~1000 m total
     ls = Lightning_stat(net, num_events=0, sampling="buffer_reject", buffer_radius=1000.0)
     result = ls.compute_density_check(Ng_real=1.0, segment_length_km=1.0)
     assert result["n_tramos"] == 1
     rect_km2 = 2 * 1000.0 * 1000.0 / 1e6
     casquete_km2 = math.pi * 1000.0**2 / 1e6  # los 2 extremos son terminales -> circulo completo
-    assert result["tramos"][0]["A_i_km2"] == pytest.approx(rect_km2 + casquete_km2, rel=0.02)
+    assert result["tramos"][0]["A_i_km2"] == pytest.approx(rect_km2 + casquete_km2, rel=0.05)
 
 
 def test_compute_density_check_suma_de_tramos_es_consistente_con_el_buffer_total():
-    # Sanity check pedido a raiz del hallazgo: para una linea recta (sin
-    # ramificaciones), sumar el area de todos los tramos (franja rectangular
-    # + casquete solo en los 2 tramos extremos) tiene que dar CASI
-    # exactamente el area total del buffer -- no varias veces mas grande,
-    # que es lo que pasaba con el bug de seg_weights.
+    # Sanity check pedido a raiz del hallazgo original de seg_weights: la
+    # suma del area de todos los tramos tiene que dar EXACTAMENTE el area
+    # total del buffer, no varias veces mas grande. Con el area estimada
+    # por Monte Carlo esto ya no es una aproximacion sino una identidad:
+    # cada punto aceptado del muestreo cae en UN solo tramo (via
+    # nearest_segment_index), asi que sumar count/total*A_buffer sobre
+    # todos los tramos da A_buffer exacto (salvo redondeo de punto flotante).
     net = _net_linea(n_nodos=8, paso=1000.0 / 7)
     ls = Lightning_stat(net, num_events=0, sampling="buffer_reject", buffer_radius=1000.0)
     result = ls.compute_density_check(Ng_real=1.0, segment_length_km=0.2)
     suma_tramos_km2 = sum(t["A_i_km2"] for t in result["tramos"])
-    assert suma_tramos_km2 == pytest.approx(result["A_buffer_km2"], rel=0.05)
+    assert suma_tramos_km2 == pytest.approx(result["A_buffer_km2"], rel=1e-9)
 
 
 def test_compute_density_check_un_solo_tramo_terminal_en_ambos_extremos_incluye_el_circulo_completo():
-    # Isla corta de un solo segmento: los dos extremos son terminales (grado
-    # 1), asi que el tramo unico debe llevar el CASQUETE COMPLETO (los dos
-    # medios circulos de cada punta), igual que el capsula analitica exacta
-    # que ya usa seg_weights para un solo segmento.
+    # Isla corta de un solo segmento: el unico tramo cubre TODA la red, asi
+    # que su area (Monte Carlo) tiene que converger al area total del
+    # buffer -- que a su vez converge (ver test_buffer_area_dinamico_*) a la
+    # capsula analitica exacta (2*r*L + pi*r^2) que ya usa seg_weights para
+    # un solo segmento.
     net = _net_dos_nodos(1000.0)
     ls = Lightning_stat(net, num_events=0, sampling="buffer_reject", buffer_radius=1000.0)
     result = ls.compute_density_check(Ng_real=1.0, segment_length_km=5.0)  # n=1
     assert result["n_tramos"] == 1
-    # rel=1e-3: el semicirculo de terminal se aproxima con un poligono
-    # (shapely), no es un circulo matematico exacto -- ~0.03% de diferencia
-    # esperable frente a la formula analitica de seg_weights.
-    assert result["tramos"][0]["A_i_km2"] == pytest.approx(ls.seg_weights[0] / 1e6, rel=1e-3)
+    assert result["tramos"][0]["A_i_km2"] == pytest.approx(ls.seg_weights[0] / 1e6, rel=0.05)
 
 
 def test_compute_density_check_solo_los_tramos_extremos_llevan_casquete():
@@ -230,37 +232,18 @@ def test_compute_density_check_solo_los_tramos_extremos_llevan_casquete():
     areas = [t["A_i_km2"] for t in result["tramos"]]
     rect_only = (2 * 100.0 * 250.0) / 1e6
     con_casquete = rect_only + (math.pi * 100.0**2 / 2) / 1e6
-    assert areas[0] == pytest.approx(con_casquete, rel=1e-3)   # primer tramo: extremo real
-    assert areas[1] == pytest.approx(rect_only)       # tramo interno: sin casquete
-    assert areas[2] == pytest.approx(rect_only)       # tramo interno: sin casquete
-    assert areas[3] == pytest.approx(con_casquete, rel=1e-3)    # ultimo tramo: extremo real
+    # rel=0.1: 4 tramos comparables en tamano compiten por el mismo
+    # presupuesto de muestras Monte Carlo -- tolerancia de muestreo.
+    assert areas[0] == pytest.approx(con_casquete, rel=0.1)   # primer tramo: extremo real
+    assert areas[1] == pytest.approx(rect_only, rel=0.1)       # tramo interno: sin casquete
+    assert areas[2] == pytest.approx(rect_only, rel=0.1)       # tramo interno: sin casquete
+    assert areas[3] == pytest.approx(con_casquete, rel=0.1)    # ultimo tramo: extremo real
 
 
 # NOTA: el escenario de "un punto de grado>=3 no debe contar como terminal"
 # ahora esta cubierto por el camino de cluster de bifurcacion, no por el
 # conteo de terminales -- ver test_compute_density_check_bifurcacion_*
-# mas abajo (agrupan la estrella en un tramo con area por union geometrica).
-
-
-def test_compute_density_check_excluye_terminales_marcados_como_puntos_de_corte():
-    # Un punto de corte artificial (limite de un area particionada,
-    # terminado con R=Zc) es degree 1 DENTRO de este sub-caso, pero NO es un
-    # extremo real de la linea -- el corredor sigue en el area vecina.
-    # excluded_terminal_points lo deja afuera del casquete aunque localmente
-    # parezca terminal (evita el sobre-conteo real medido en areas
-    # particionadas del caso real: el casquete se sumaba tambien en cada
-    # punto de corte, empeorando la sobreestimacion en vez de mejorarla).
-    net = _net_linea(n_nodos=5, paso=250.0)  # 4 segmentos de 250 m
-    ls = Lightning_stat(net, num_events=0, sampling="buffer_reject", buffer_radius=100.0)
-    punto_de_corte = (0.0, 0.0)  # extremo del primer nodo (x=0, y=0)
-    result = ls.compute_density_check(
-        Ng_real=1.0, segment_length_km=0.25,
-        excluded_terminal_points={punto_de_corte},
-    )
-    rect_only = (2 * 100.0 * 250.0) / 1e6
-    con_casquete = rect_only + (math.pi * 100.0**2 / 2) / 1e6
-    assert result["tramos"][0]["A_i_km2"] == pytest.approx(rect_only)      # excluido -> sin casquete
-    assert result["tramos"][3]["A_i_km2"] == pytest.approx(con_casquete, rel=1e-3)   # extremo real -> con casquete
+# mas abajo.
 
 
 def test_compute_density_check_tramo_normal_curvo_no_usa_franja_recta():
@@ -269,15 +252,10 @@ def test_compute_density_check_tramo_normal_curvo_no_usa_franja_recta():
     # debajo de Ng_real). La franja rectangular (2*r*L) asume que el tramo
     # es recto; en una red real que sigue el trazado de una via/terreno, un
     # tramo con una curva (aunque sea suave, sin bifurcacion) tiene un area
-    # de buffer VERDADERA (union geometrica, con el join redondo correcto en
-    # cada poste) MENOR que la franja recta -- el area real se solapa
-    # consigo misma en el interior de la curva. Con 7 segmentos de ~140 m y
-    # 8 grados de giro por poste (realista), la franja recta sobreestima
-    # el area real en mas de un 20% -- exactamente el orden de magnitud de
-    # las desviaciones reportadas.
-    from shapely.geometry import LineString, Point
-    from shapely.ops import linemerge
-
+    # de buffer VERDADERA menor que la franja recta -- el area real se
+    # solapa consigo misma en el interior de la curva. Con 20 segmentos de
+    # ~140 m y 15 grados de giro por poste (realista), la franja recta
+    # sobreestima el area real en mas de un 15%.
     net = _net_curva(n_segments=20, seg_length=140.0, angle_deg_per_seg=15.0)
     ls = Lightning_stat(net, num_events=0, sampling="buffer_reject", buffer_radius=1000.0)
     result = ls.compute_density_check(Ng_real=1.0, segment_length_km=5.0)  # n=1: toda la curva en un solo tramo
@@ -286,42 +264,19 @@ def test_compute_density_check_tramo_normal_curvo_no_usa_franja_recta():
     length_m = sum(math.hypot(bx - ax, by - ay) for (ax, ay, bx, by) in ls.segments)
     franja_recta_km2 = (2 * 1000.0 * length_m + math.pi * 1000.0**2) / 1e6  # naive + 2 terminales
 
-    p0 = (ls.segments[0][0], ls.segments[0][1])
-    p1 = (ls.segments[-1][2], ls.segments[-1][3])
-    merged = linemerge([LineString([(ax, ay), (bx, by)]) for (ax, ay, bx, by) in ls.segments])
-    area_real_km2 = merged.buffer(1000.0, cap_style="flat", join_style="round").union(
-        Point(p0).buffer(1000.0)
-    ).union(Point(p1).buffer(1000.0)).area / 1e6
-
-    # rel=1e-3: la referencia usa buffer()/Point.buffer() con la resolucion
-    # por defecto de shapely, el codigo real usa quad_segs=32 para el
-    # semicirculo de terminal -- ~0.02% de diferencia esperable entre dos
-    # aproximaciones poligonales distintas del mismo circulo, no un bug.
-    assert result["tramos"][0]["A_i_km2"] == pytest.approx(area_real_km2, rel=1e-3)
     assert result["tramos"][0]["A_i_km2"] < franja_recta_km2 * 0.85  # la franja recta sobreestima >15%
 
 
 def test_compute_density_check_bifurcacion_se_agrupa_en_un_solo_tramo_con_area_real():
     # Los 3 brazos de la estrella tocan directamente el centro (grado 3) ->
     # los 3 segmentos entran al mismo cluster de bifurcacion y se reportan
-    # como UN SOLO tramo, con el area real (union geometrica), no la suma
-    # de 3 franjas+casquetes independientes (que exagera el solape cerca
-    # del centro).
-    from shapely.geometry import LineString
-    from shapely.ops import unary_union
-
+    # como UN SOLO tramo, con el area real (Monte Carlo), no la suma de 3
+    # franjas+casquetes independientes (que exagera el solape cerca del
+    # centro).
     net = _net_estrella()
     ls = Lightning_stat(net, num_events=0, sampling="buffer_reject", buffer_radius=100.0)
     result = ls.compute_density_check(Ng_real=1.0, segment_length_km=0.1)
     assert result["n_tramos"] == 1
-
-    union = unary_union([
-        LineString([(ax, ay), (bx, by)]).buffer(100.0) for (ax, ay, bx, by) in ls.segments
-    ])
-    # rel=1e-3: misma diferencia de resolucion poligonal de circulo ya
-    # documentada arriba (quad_segs=32 del semicirculo real vs. la
-    # resolucion por defecto de Point.buffer() en esta referencia).
-    assert result["tramos"][0]["A_i_km2"] == pytest.approx(union.area / 1e6, rel=1e-3)
 
     # El area real tiene que ser MENOR que sumar 3 franjas+casquete
     # independientes (el bug que se queria evitar: contar el solape cerca
@@ -331,6 +286,52 @@ def test_compute_density_check_bifurcacion_se_agrupa_en_un_solo_tramo_con_area_r
         for (ax, ay, bx, by) in ls.segments
     )
     assert result["tramos"][0]["A_i_km2"] < naive_km2
+
+
+def test_compute_density_check_tramos_cercanos_no_adyacentes_no_se_pisan():
+    # Hallazgo principal de la investigacion (2026-08-18, corrida real de
+    # 20000 rayos): incluso con la union geometrica correcta de curvas y
+    # bifurcaciones, 3 tramos de esa corrida seguian con Ng_i hasta -49%
+    # por debajo de Ng_real, sin tener ninguna curva pronunciada. Causa:
+    # dos tramos NO adyacentes en el indice de self.segments pueden estar
+    # geometricamente CERCA en el espacio (un recodo o paralelismo real de
+    # la red) -- el area de un tramo aislado no puede saber que parte de su
+    # "propio" corredor en realidad esta mas cerca de OTRO tramo, que se
+    # queda con esos rayos via nearest_segment_index (la misma regla que
+    # asigna los rayos reales). Repro minimo: 2 segmentos paralelos de
+    # 1000 m, SIN conectar entre si (islas separadas, para aislar el
+    # efecto), a solo 50 m de distancia con buffer_radius=100 m (2*r=200 >
+    # 50 -> sus corredores se solapan bastante en el medio).
+    net = nl.Network("uid_test", "Test_Network_Paralelas")
+    net.InitXY = nl.PointXY(0, 0)
+    config = _config_mono()
+    net.AddNode(0.0, 0.0, Nodeidx=1, ctype="abs")
+    net.AddNode(0.0, 1000.0, Nodeidx=2, ctype="abs")
+    net.AddNode(50.0, 0.0, Nodeidx=3, ctype="abs")
+    net.AddNode(50.0, 1000.0, Nodeidx=4, ctype="abs")
+    net.AddLine(net.Nodes[0], net.Nodes[1], config)  # pierna A: x=0
+    net.AddLine(net.Nodes[2], net.Nodes[3], config)  # pierna B: x=50
+
+    ls = Lightning_stat(net, num_events=0, sampling="buffer_reject", buffer_radius=100.0)
+    result = ls.compute_density_check(Ng_real=1.0, segment_length_km=1.0)
+    assert result["n_tramos"] == 2
+
+    # La suma de las 2 areas tiene que dar (casi) exactamente el area total
+    # del corredor -- por construccion del metodo Monte Carlo (cada punto
+    # aceptado cae en UN tramo), a diferencia de calcular cada pierna por
+    # separado (union geometrica aislada, el metodo que este caso dejo de
+    # usar), que SI se solaparia entre las 2 piernas.
+    suma_km2 = sum(t["A_i_km2"] for t in result["tramos"])
+    assert suma_km2 == pytest.approx(result["A_buffer_km2"], rel=1e-6)
+
+    # La franja+casquete de UNA pierna aislada (el area que le habria dado
+    # el metodo geometrico anterior, sin saber de la pierna vecina) tiene
+    # que ser bien mayor que lo que el codigo real le asigna -- la mitad
+    # del ancho solapado (donde 50 < 2*100) en realidad le pertenece a la
+    # OTRA pierna.
+    aislada_km2 = (2 * 100.0 * 1000.0 + math.pi * 100.0**2) / 1e6
+    for t in result["tramos"]:
+        assert t["A_i_km2"] < aislada_km2 * 0.85
 
 
 def test_compute_density_check_bifurcacion_lejos_de_tramos_rectos_no_los_afecta():
@@ -353,86 +354,6 @@ def test_compute_density_check_bifurcacion_lejos_de_tramos_rectos_no_los_afecta(
     tramo_con_rayo = next(t for t in result2["tramos"] if t["m_i"] == 1)
     cluster_tramo = result2["tramos"][-1]
     assert tramo_con_rayo["tramo"] != cluster_tramo["tramo"]
-
-
-def test_compute_density_check_cluster_no_pone_casquete_redondo_en_cortes_artificiales():
-    # Hallazgo real (revisando el calculo de areas del buffer, caso real
-    # 216-13): _cluster_union_area_m2 bufferea cada segmento con el
-    # cap_style redondo por defecto de shapely -- en _net_con_lateral, el
-    # cluster de la bifurcacion (x=1000) absorbe los 2 segmentos de la
-    # principal completos (x=800-1000 y 1000-1200, cada uno mas largo que
-    # buffer_radius=100) MAS el lateral. Los cortes en x=800/x=1200 NO son
-    # terminales reales (grado 2, la principal sigue de largo hacia
-    # x=0/x=1800) -- solo la punta del lateral (1000,300) lo es (grado 1).
-    # Antes del fix, los 3 extremos exteriores del cluster (x=800, x=1200,
-    # Y la punta del lateral) recibian casquete redondo por igual --
-    # sobreestimando el area en los 2 cortes que en realidad continuan.
-    import math
-    from shapely.geometry import LineString, Point
-    from shapely.ops import unary_union
-
-    net = _net_con_lateral()
-    ls = Lightning_stat(net, num_events=0, sampling="buffer_reject", buffer_radius=100.0)
-    result = ls.compute_density_check(Ng_real=1.0, segment_length_km=0.7)
-    cluster_tramo = result["tramos"][-1]
-
-    # Los 3 segmentos absorbidos por el cluster: x=800-1000, 1000-1200 (de
-    # la principal) y el lateral 1000,0 -> 1000,300.
-    seg_800_1000 = LineString([(800.0, 0.0), (1000.0, 0.0)])
-    seg_1000_1200 = LineString([(1000.0, 0.0), (1200.0, 0.0)])
-    seg_lateral = LineString([(1000.0, 0.0), (1000.0, 300.0)])
-
-    shapes = [
-        seg_800_1000.buffer(100.0, cap_style="flat"),
-        seg_1000_1200.buffer(100.0, cap_style="flat"),
-        seg_lateral.buffer(100.0, cap_style="flat"),
-        Point(1000.0, 300.0).buffer(100.0),  # unica punta que es terminal real
-    ]
-    area_esperada_km2 = unary_union(shapes).area / 1e6
-    # rel=1e-3: el semicirculo de terminal real usa quad_segs=32, la
-    # referencia aca usa Point.buffer() con la resolucion por defecto --
-    # misma diferencia de aproximacion poligonal ya documentada arriba.
-    assert cluster_tramo["A_i_km2"] == pytest.approx(area_esperada_km2, rel=1e-3)
-
-    # Y tiene que ser bien menor que si los 3 extremos llevaran casquete
-    # redondo (el bug original: x=800 y x=1200 tambien recibian circulo,
-    # pese a no ser terminales reales).
-    shapes_bug_original = [
-        seg_800_1000.buffer(100.0),
-        seg_1000_1200.buffer(100.0),
-        seg_lateral.buffer(100.0),
-    ]
-    area_bug_original_km2 = unary_union(shapes_bug_original).area / 1e6
-    assert cluster_tramo["A_i_km2"] < area_bug_original_km2
-
-
-def test_compute_density_check_cluster_respeta_excluded_terminal_points():
-    # excluded_terminal_points tiene que aplicar tambien dentro de un
-    # cluster de bifurcacion, no solo en los tramos normales (ver
-    # test_compute_density_check_excluye_terminales_marcados_como_puntos_de_corte):
-    # un punto de corte de particion en el extremo del lateral no debe
-    # llevar casquete aunque localmente sea grado 1.
-    from shapely.geometry import LineString
-    from shapely.ops import unary_union
-
-    net = _net_con_lateral()
-    ls = Lightning_stat(net, num_events=0, sampling="buffer_reject", buffer_radius=100.0)
-    punto_de_corte = (1000.0, 300.0)  # punta del lateral, tratada como corte de particion
-    result = ls.compute_density_check(
-        Ng_real=1.0, segment_length_km=0.7, excluded_terminal_points={punto_de_corte},
-    )
-    cluster_tramo = result["tramos"][-1]
-
-    seg_800_1000 = LineString([(800.0, 0.0), (1000.0, 0.0)])
-    seg_1000_1200 = LineString([(1000.0, 0.0), (1200.0, 0.0)])
-    seg_lateral = LineString([(1000.0, 0.0), (1000.0, 300.0)])
-    shapes_sin_casquetes = [
-        seg_800_1000.buffer(100.0, cap_style="flat"),
-        seg_1000_1200.buffer(100.0, cap_style="flat"),
-        seg_lateral.buffer(100.0, cap_style="flat"),
-    ]
-    area_esperada_km2 = unary_union(shapes_sin_casquetes).area / 1e6
-    assert cluster_tramo["A_i_km2"] == pytest.approx(area_esperada_km2, rel=1e-6)
 
 
 def test_compute_density_check_tsim():

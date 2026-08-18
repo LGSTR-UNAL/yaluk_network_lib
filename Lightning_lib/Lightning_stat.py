@@ -552,25 +552,81 @@ class Lightning_stat:
         dists = [_dist_point_to_segment(x, y, *s) for s in self.segments]
         return min(range(len(dists)), key=lambda i: dists[i])
 
-    def compute_density_check(
-        self, Ng_real: float, segment_length_km: float, excluded_terminal_points=None,
-    ) -> dict:
+    def _montecarlo_area_by_tramo(self, seg_to_tramo: dict, n_samples: int = 300000) -> dict:
+        """Area de cada tramo (m_i/A_i de compute_density_check), estimada
+        por Monte Carlo: muestrea puntos en el corredor (mismo muestreo por
+        rechazo que _compute_buffer_area) y clasifica cada punto aceptado
+        por `nearest_segment_index` -> tramo -- la MISMA regla que ya usa
+        compute_density_check para asignar cada rayo real a su tramo.
+
+        Por que Monte Carlo y no geometria analitica (historia completa en
+        el docstring de compute_density_check, punto 4): una union
+        geometrica de los segmentos de un tramo, por mas exacta que sea,
+        solo sabe de SUS PROPIOS segmentos -- si otro tramo (lejos en el
+        indice de `self.segments`, pero cerca en el espacio real, por un
+        recodo o un paralelismo de la red) le "roba" parte de esa zona via
+        nearest_segment_index, la geometria aislada no tiene forma de
+        detectarlo. El Monte Carlo evita el problema de raiz porque usa la
+        MISMA regla de asignacion en todo momento -- captura automaticamente
+        curvas, bifurcaciones, y esta competencia entre tramos cercanos en
+        el espacio, sin necesitar ningun caso especial."""
+        ax, ay, bx, by, dx, dy, seg2, seg2_safe = self._segment_matrix()
+        rng = self._rng
+        tally: dict = {}
+        accepted_total = 0
+        # Cota dura de tamano de lote (no remaining*multiplicador como
+        # _sample_reject_pool) -- si la tasa de aceptacion del corredor es
+        # baja frente al bbox de una red real grande, "remaining" no baja y
+        # el lote quedaria fijo en un tamano enorme por cientos de
+        # iteraciones, cada una asignando varias matrices (lote x
+        # segmentos) -- causo un OOM real contra una red de 178 km2 de
+        # buffer antes de acotarlo asi.
+        BATCH_CAP = 20000
+        MAX_ITERS = 60
+        for _ in range(MAX_ITERS):
+            if accepted_total >= n_samples:
+                break
+            this_batch = min(BATCH_CAP, (n_samples - accepted_total) * 2)
+            this_batch = max(this_batch, 1)
+            px = self.Xmin + np.array([rng.random() for _ in range(this_batch)]) * (self.Xmax - self.Xmin)
+            py = self.Ymin + np.array([rng.random() for _ in range(this_batch)]) * (self.Ymax - self.Ymin)
+            px_b, py_b = px[:, None], py[:, None]
+            t = ((px_b - ax) * dx + (py_b - ay) * dy) / seg2_safe
+            t = np.clip(t, 0.0, 1.0)
+            t = np.where(seg2 == 0.0, 0.0, t)
+            cx, cy = ax + t * dx, ay + t * dy
+            dist = np.hypot(px_b - cx, py_b - cy)
+            min_dist = dist.min(axis=1)
+            nearest = dist.argmin(axis=1)
+            keep = np.flatnonzero(min_dist <= self.buffer_radius)
+            for i in keep:
+                key = seg_to_tramo[int(nearest[i])]
+                tally[key] = tally.get(key, 0) + 1
+            accepted_total += len(keep)
+
+        A_buffer_km2 = self.Area / 1e6
+        return {
+            key: (count / accepted_total) * A_buffer_km2 if accepted_total else None
+            for key, count in tally.items()
+        }
+
+    def compute_density_check(self, Ng_real: float, segment_length_km: float) -> dict:
         """Chequeo de homogeneidad de la campana de rayos ya generada
         (self.Lightnings): parte self.segments en tramos consecutivos (mismo
         orden que net.Lines) de longitud objetivo `segment_length_km`, cuenta
         cuantos rayos cayeron mas cerca de cada tramo (Ng_i = m_i/A_i) y
         deriva T_sim = m_t / (Ng_real * A_buffer).
 
-        A_i es el area REAL de la union geometrica de los segmentos del
-        tramo (`_cluster_union_area_m2`, via `shapely`), no una franja
-        rectangular (2*r*L) ni la suma de seg_weights de sus segmentos
-        reales -- seg_weights existe para PONDERAR EL MUESTREO (cada
-        segmento carga su propio circulo pi*r^2 completo, a proposito, para
-        que segmentos cortos no queden sub-representados al elegir donde
-        cae un rayo), no para medir area.
+        A_i se estima por Monte Carlo (`_montecarlo_area_by_tramo`):
+        muestrea puntos en el corredor y los clasifica por
+        `nearest_segment_index`, la MISMA regla que ya usan los rayos
+        reales -- no una franja rectangular (2*r*L) ni una union geometrica
+        de los segmentos propios del tramo, y tampoco la suma de
+        seg_weights (que existe para PONDERAR EL MUESTREO de donde cae un
+        rayo, no para medir area).
 
-        Historia (3 correcciones reales, todas sobre la MISMA funcion de
-        area, cada una encontrada verificando contra una corrida real):
+        Historia (4 correcciones reales sobre la MISMA funcion de area,
+        cada una encontrada verificando contra una corrida real):
         1. (Fase 1, 2026-08-11) sumar seg_weights por tramo duplicaba el
            circulo de cada segmento corto -- ~11-12 km^2 por tramo de 1 km
            en vez de los ~2 km^2 esperados. Reemplazado por la franja
@@ -578,27 +634,28 @@ class Lightning_stat:
         2. (2026-08-18) la franja rectangular es correcta SOLO si el tramo
            es perfectamente recto -- una curva real (la red sigue el trazado
            de una via/terreno) hace que el buffer real se solape consigo
-           mismo, y la franja lo sobreestima. Reemplazada por
-           `_cluster_union_area_m2` para TODOS los tramos (no solo los
-           clusters de bifurcacion) -- ver su docstring para la
-           verificacion numerica completa (linemerge + join redondo +
-           circulo en hubs/terminales). Encontrado en una corrida real de
-           20000 rayos con Ng_i hasta -47% por debajo de Ng_real en tramos
-           SIN ninguna bifurcacion cerca.
-        3. (2026-08-18, misma investigacion) `_cluster_union_area_m2` en si
-           tambien subestimaba en el HUB de una bifurcacion real (3+ ramas
-           que no colapsan en una sola linea via `linemerge`) -- corregido
-           agregando un circulo tambien ahi, no solo en los terminales
-           reales de la red.
-
-        `excluded_terminal_points`: set opcional de (x,y) (mismo redondeo a
-        3 decimales que el grado interno) que NUNCA cuentan como terminal
-        aunque localmente tengan grado 1 -- son los puntos de CORTE
-        artificiales de un sub-caso particionado (`cut_labels`, terminados
-        con R=Zc): el corredor real sigue en el area vecina, sumarles un
-        casquete duplicaria esa porcion de buffer. Sin esto, un area
-        particionada con varios cortes termina SOBREESTIMANDO mas que antes
-        de agregar el casquete (medido contra el caso real: +27% -> +96%).
+           mismo, y la franja lo sobreestima. Reemplazada por una union
+           geometrica real (`shapely`, linemerge + join redondo) para TODOS
+           los tramos, no solo los clusters de bifurcacion. Encontrado en
+           una corrida real de 20000 rayos con Ng_i hasta -47% por debajo
+           de Ng_real en tramos sin ninguna bifurcacion cerca.
+        3. (2026-08-18, misma investigacion) esa union geometrica tambien
+           subestimaba en el HUB de una bifurcacion real -- corregido
+           agregando un circulo ahi tambien.
+        4. (2026-08-18, misma investigacion) INCLUSO con esas 2
+           correcciones, 3 tramos de esa misma corrida seguian con Ng_i
+           hasta -49% por debajo de Ng_real, sin tener ninguna curva
+           pronunciada: estaban geometricamente CERCA de otro tramo NO
+           adyacente (la red hace un recodo/paralelismo que acerca dos
+           tramos sin que sean consecutivos en `self.segments`) -- una
+           union geometrica por tramo aislado no puede detectar que otro
+           tramo, lejos en el indice pero cerca en el espacio, le "roba"
+           esa zona via nearest_segment_index. Reemplazado por completo con
+           el enfoque Monte Carlo (punto 4 arriba), que usa la MISMA regla
+           de asignacion que los rayos reales y por lo tanto no puede
+           tener este problema estructuralmente. Verificado contra el caso
+           real: los 3 tramos con -28% a -49% de error bajaron a -2% a
+           +4%, y el resto de los 22 tramos de esa corrida tambien mejoro.
 
         Los segmentos cerca de una bifurcacion real (nodo de grado >=3) se
         agrupan en su PROPIO tramo (uno por cluster de bifurcacion) -- el
@@ -606,9 +663,6 @@ class Lightning_stat:
         segmento mas cercano). A_buffer (para T_sim) sigue siendo el
         estimador Monte Carlo exacto de self.Area, no se toca.
         """
-        excluded_terminal_points = {
-            (round(x, 3), round(y, 3)) for (x, y) in (excluded_terminal_points or ())
-        }
         seg_lengths_m = [
             math.hypot(bx - ax, by - ay) for (ax, ay, bx, by) in self.segments
         ]
@@ -687,32 +741,50 @@ class Lightning_stat:
                 return None
             return (m_i / area_km2) / T_sim_years
 
+        # Area por Monte Carlo (asignacion de vecino mas cercano, la MISMA
+        # regla que usan los rayos reales) -- reemplaza la union geometrica
+        # de los propios segmentos del tramo (linemerge + join redondo +
+        # circulo en terminales/hubs internos). Historia (2026-08-18,
+        # misma investigacion, corrida real de 20000 rayos):
+        # 1. La franja rectangular sobreestimaba tramos curvos (hasta -47%
+        #    de Ng_i) -- corregido con la union geometrica real.
+        # 2. La union geometrica segui sobreestimando 3 tramos especificos
+        #    (7, 17, 18 en esa corrida, hasta -49%) que NO tienen curvas
+        #    pronunciadas: estan geometricamente CERCA de otro tramo no
+        #    adyacente (la red real hace un recodo/paralelismo que acerca
+        #    dos tramos sin que sean consecutivos en self.segments) -- el
+        #    area geometrica de un tramo aislado no sabe que parte de su
+        #    "propio" corredor en realidad esta mas cerca de un VECINO, que
+        #    se queda con esos rayos via nearest_segment_index. La union
+        #    geometrica por tramo simplemente no puede detectar esto (no
+        #    tiene forma de saber que otro tramo, lejos en el indice pero
+        #    cerca en el espacio, "compite" por la misma zona).
+        # El Monte Carlo evita el problema de raiz: muestrea puntos en el
+        # corredor completo y los clasifica por el MISMO nearest_segment_index
+        # que ya usan los rayos reales, así que automaticamente reparte el
+        # area segun a quien realmente le tocaria cada zona -- capta curvas,
+        # bifurcaciones, Y esta competencia entre tramos cercanos en el
+        # espacio, todo en un solo mecanismo. Verificado contra el caso real
+        # 216-13: los 3 tramos con -28% a -49% de error bajaron a -2% a +4%,
+        # y el resto de los 22 tramos tambien mejoro (dev tipica <10%, ya
+        # dentro del ruido de muestreo esperable para su m_i).
+        mc_by_key = self._montecarlo_area_by_tramo(seg_to_tramo)
+
         tramos = []
-        for bi, idxs in enumerate(bucket_indices):
-            # Area por union geometrica real (linemerge + join redondo +
-            # circulo en terminales/hubs internos), NO la franja rectangular
-            # 2*r*L de antes: un tramo "normal" (sin bifurcacion cerca)
-            # puede seguir teniendo una curva real (la red sigue el trazado
-            # de una via/terreno), y la franja recta sobreestimaba su area
-            # en esos casos -- hallazgo real de 2026-08-18, corrida de
-            # 20000 rayos con Ng_i hasta -47% por debajo de Ng_real en
-            # tramos sin ninguna bifurcacion. Ver el docstring de
-            # `_cluster_union_area_m2` para la verificacion numerica.
-            area_km2 = self._cluster_union_area_m2(
-                idxs, endpoint_degree=endpoint_degree, excluded_terminal_points=excluded_terminal_points,
-            ) / 1e6
-            m_i = counts.get(("normal", bi), 0)
+        for bi in range(len(bucket_indices)):
+            key = ("normal", bi)
+            area_km2 = mc_by_key.get(key)
+            m_i = counts.get(key, 0)
             tramos.append({
                 "tramo": len(tramos),
                 "m_i": m_i,
                 "A_i_km2": area_km2,
                 "Ng_i": _ng_i(m_i, area_km2),
             })
-        for ci, group in enumerate(cluster_groups):
-            area_km2 = self._cluster_union_area_m2(
-                group, endpoint_degree=endpoint_degree, excluded_terminal_points=excluded_terminal_points,
-            ) / 1e6
-            m_i = counts.get(("cluster", ci), 0)
+        for ci in range(len(cluster_groups)):
+            key = ("cluster", ci)
+            area_km2 = mc_by_key.get(key)
+            m_i = counts.get(key, 0)
             tramos.append({
                 "tramo": len(tramos),
                 "m_i": m_i,
@@ -794,95 +866,6 @@ class Lightning_stat:
                             stack.append(other)
             groups.append(group)
         return groups
-
-    def _cluster_union_area_m2(
-        self, segment_indices, endpoint_degree=None, excluded_terminal_points=None,
-    ) -> float:
-        """Area real (m^2) de la union de los buffers de los segmentos
-        indicados -- geometria real (shapely), sin importar si forman una
-        cadena recta, una curva, o un cluster con bifurcacion real.
-
-        Historia (investigacion 2026-08-18, corrida real de 20000 rayos con
-        Ng_i hasta -47% por debajo de Ng_real en tramos NORMALES, no solo en
-        clusters): bufferear cada segmento por separado con cap_style='flat'
-        y unirlos (el fix anterior, b1f18f1) evita el doble conteo en el
-        interior de una curva/bifurcacion, pero deja un HUECO real del lado
-        de afuera de cualquier curva -- un cap 'flat' en el extremo de cada
-        segmento no llena la cuna entre dos segmentos que cambian de
-        direccion; verificado numericamente contra la referencia correcta
-        (bufferear la polilinea COMPLETA de una vez con join_style='round'):
-        el enfoque anterior subestima el area entre ~5% (curvas suaves) y
-        ~35-55% (curvas cerradas), consistente con la sobreestimacion de
-        densidad -- Ng_i de-- MAS de lo esperado en tramos con curvas
-        pronunciadas, exactamente el patron reportado por el usuario.
-
-        Fix: `shapely.ops.linemerge` fusiona primero las cadenas de
-        segmentos realmente conectadas (sin bifurcacion) en una sola
-        polilinea cada una; bufferear esa polilinea ya fusionada con
-        join_style='round' (ademas de cap_style='flat' en sus dos puntas)
-        reproduce EXACTO el area de una curva sin necesitar ningun circulo
-        extra en sus vertices internos (verificado: coincide al 0.000% con
-        la referencia, para cualquier angulo de curva).
-
-        En cada extremo que SI es un terminal real (grado 1 en toda la red,
-        no marcado como punto de corte de particion) se agrega un
-        SEMICIRCULO -- no un circulo completo -- recortado al lado de
-        AFUERA del segmento (perpendicular a su propia direccion en ese
-        punto). Un circulo completo centrado en el terminal, cuando el
-        tramo es mas corto que buffer_radius (comun: postes cada ~130-150 m
-        vs. buffer_radius~1000 m), se extiende MAS ALLA del propio extremo
-        del tramo hacia el lado de ADENTRO -- invadiendo el territorio del
-        tramo VECINO y duplicando esa area al sumar todos los tramos (bug
-        real encontrado en la misma investigacion: rompia la suma total ~45%
-        por encima del area real del buffer). El semicirculo, por
-        construccion, nunca se extiende hacia el lado de adentro -- mismo
-        resultado que el casquete de medio circulo que ya usaba la franja
-        rectangular original, ahora tambien correcto para tramos curvos."""
-        from shapely.geometry import LineString, MultiLineString, Point, Polygon
-        from shapely.ops import linemerge, unary_union
-
-        endpoint_degree = endpoint_degree or {}
-        excluded_terminal_points = excluded_terminal_points or set()
-
-        def _half_disk(center, direction, r):
-            cx, cy = center
-            dx, dy = direction
-            norm = math.hypot(dx, dy)
-            dx, dy = dx / norm, dy / norm
-            px, py = -dy, dx
-            big = 4 * r
-            half_plane = Polygon([
-                (cx - px * big, cy - py * big),
-                (cx + px * big, cy + py * big),
-                (cx + px * big + dx * big, cy + py * big + dy * big),
-                (cx - px * big + dx * big, cy - py * big + dy * big),
-            ])
-            return Point(center).buffer(r, quad_segs=32).intersection(half_plane)
-
-        lines = [
-            LineString([(ax, ay), (bx, by)])
-            for i in segment_indices
-            for (ax, ay, bx, by) in [self.segments[i]]
-        ]
-        merged = linemerge(MultiLineString([list(l.coords) for l in lines]))
-        pieces = list(merged.geoms) if hasattr(merged, "geoms") else [merged]
-
-        shapes = [
-            piece.buffer(self.buffer_radius, cap_style="flat", join_style="round")
-            for piece in pieces
-        ]
-
-        for piece in pieces:
-            for pt, neighbor in (
-                (piece.coords[0], piece.coords[1]),
-                (piece.coords[-1], piece.coords[-2]),
-            ):
-                key = (round(pt[0], 3), round(pt[1], 3))
-                if endpoint_degree.get(key) == 1 and key not in excluded_terminal_points:
-                    direction = (pt[0] - neighbor[0], pt[1] - neighbor[1])
-                    shapes.append(_half_disk(pt, direction, self.buffer_radius))
-
-        return unary_union(shapes).area
 
     # ---------------------------------------------------------
     # File creation

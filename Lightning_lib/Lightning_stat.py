@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, List
 
 import numpy as np
 from scipy.stats import lognorm
+from scipy.special import ndtri
 
 from yaluk_network_lib.Network_lib.GeoTransform import CoordTransf, PointLatLng, PointXY
 
@@ -215,16 +216,18 @@ class Lightning_stat:
         corriente en kA (magnitud, antes de escalar a A). Reutilizado por
         GenStatCurrents (corriente muestreada) y por LoadFromDatabase
         (corriente real de un LLS)."""
+        # antes: lognorm(s=Std_I, scale=exp(log(Mean_Ip_X))).median() -- el
+        # median de una lognormal con ese scale es EXACTAMENTE el scale
+        # (propiedad estandar de la distribucion), asi que construir el
+        # objeto entero solo para llamar .median() era pura sobrecarga sin
+        # ningun computo real detras (~2.5s para 1500 llamadas, ver test de
+        # regresion).
         if Ix_kA > 20:
             Std_I = self.std_dev_I2
-            Mean_I = lognorm(
-                s=self.std_dev_I2, scale=math.exp(math.log(self.Mean_Ip_2))
-            ).median()
+            Mean_I = math.exp(math.log(self.Mean_Ip_2))
         else:
             Std_I = self.std_dev_I1
-            Mean_I = lognorm(
-                s=self.std_dev_I1, scale=math.exp(math.log(self.Mean_Ip_1))
-            ).median()
+            Mean_I = math.exp(math.log(self.Mean_Ip_1))
 
         Xtf = math.log(
             self.Mean_tf
@@ -232,8 +235,13 @@ class Lightning_stat:
             math.log(Ix_kA) - math.log(Mean_I)
         )
         Std_tf = self.std_dev_tf * math.sqrt(1 - self.tf_correlation**2)
-        Tf_dist = lognorm(s=Std_tf, scale=math.exp(Xtf))
-        Front_time = Tf_dist.ppf(self._rng.random()) * 1e-6
+        # antes: lognorm(s=Std_tf, scale=exp(Xtf)).ppf(q) -- reconstruia un
+        # lognorm() nuevo en cada llamada solo para invertir la CDF una vez.
+        # lognorm(s,scale=exp(mu)).ppf(q) == exp(mu + s*Phi^-1(q)) (Phi^-1 =
+        # inversa normal estandar), verificado numericamente a ~1e-15 de
+        # diferencia contra la formula original -- scipy.special.ndtri es
+        # esa inversa normal, sin construir ningun objeto de distribucion.
+        Front_time = math.exp(Xtf + Std_tf * ndtri(self._rng.random())) * 1e-6
         tf1 = (Front_time ** (self.n1 + 1) / (self.n1 * self.tc)) ** (1 / self.n1)
         return Front_time, tf1
 

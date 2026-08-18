@@ -139,15 +139,60 @@ def test_sample_reject_con_muchos_segmentos_es_rapido():
     for L in ls.Lightnings:
         assert ls._min_dist_to_lines(L.X_location, L.Y_location) <= 200.0 + 1e-6
 
-    # Antes de estos 3 fixes (_sample_reject_pool, check_direct_strike
-    # vectorizado, CoordTransf cacheado) este mismo escenario tardaba ~17s
-    # con el codigo original -- ahora ~3-4s, dominado por lo que queda SIN
-    # optimizar: _compute_buffer_area (~1s, ya vectorizado, costo unico
-    # necesario) + generacion de parametros estadisticos por rayo
-    # (Ix1/Ix2.ppf + _impute_front_time, ~2.5s, construye un lognorm()
-    # nuevo por rayo -- mismo patron que CoordTransf, no abordado en esta
-    # ronda). Cota generosa para no ser fragil ante variacion de maquina.
-    assert elapsed < 6.0, f"tardo {elapsed:.1f}s -- se esperaban los 3 fixes de esta ronda"
+    # Antes de estos 4 fixes (_sample_reject_pool, check_direct_strike
+    # vectorizado, CoordTransf cacheado, _impute_front_time sin reconstruir
+    # lognorm() por llamada) este mismo escenario tardaba ~17s con el
+    # codigo original -- ahora ~1.7s, dominado casi enteramente por
+    # _compute_buffer_area (~1-1.2s, ya vectorizado desde antes, costo
+    # unico necesario -- ver su propia historia de optimizacion en su
+    # docstring). Cota generosa para no ser fragil ante variacion de maquina.
+    assert elapsed < 3.0, f"tardo {elapsed:.1f}s -- se esperaban los 4 fixes de esta ronda"
+
+
+def test_impute_front_time_coincide_con_formula_lognorm_original():
+    # Referencia = la formula original tal cual estaba (construye lognorm()
+    # dos veces), calculada aca con los mismos valores fijos que usa la
+    # clase, para comparar bit a bit (o casi) contra _impute_front_time ya
+    # optimizado -- ver verificacion numerica en el reporte (median exacto,
+    # ppf con diff ~1e-15 via scipy.special.ndtri en vez de reconstruir
+    # lognorm() por llamada).
+    from scipy.stats import lognorm
+
+    net = _net_dos_nodos()
+    ls = Lightning_stat(net, num_events=0, sampling="bbox", M="OtroModoNoImplementado")
+    ls._rng.seed(12345)
+    q = ls._rng.random()  # el mismo random() que consumira _impute_front_time
+    ls._rng.seed(12345)  # rebobinar para que _impute_front_time consuma el mismo q
+
+    for Ix_kA in (5.0, 30.0):  # ambas ramas: <=20 y >20
+        if Ix_kA > 20:
+            Std_I, Mean_Ip = ls.std_dev_I2, ls.Mean_Ip_2
+        else:
+            Std_I, Mean_Ip = ls.std_dev_I1, ls.Mean_Ip_1
+        Mean_I_ref = lognorm(s=Std_I, scale=math.exp(math.log(Mean_Ip))).median()
+        Xtf = math.log(ls.Mean_tf) + ls.tf_correlation * ls.std_dev_tf / Std_I * (
+            math.log(Ix_kA) - math.log(Mean_I_ref)
+        )
+        Std_tf = ls.std_dev_tf * math.sqrt(1 - ls.tf_correlation**2)
+        ls._rng.seed(12345)
+        front_time_ref = lognorm(s=Std_tf, scale=math.exp(Xtf)).ppf(ls._rng.random()) * 1e-6
+
+        ls._rng.seed(12345)
+        front_time, _ = ls._impute_front_time(Ix_kA)
+        assert front_time == pytest.approx(front_time_ref, rel=1e-9)
+
+
+def test_impute_front_time_no_reconstruye_lognorm_por_llamada():
+    net = _net_dos_nodos()
+    ls = Lightning_stat(net, num_events=0, sampling="bbox", M="OtroModoNoImplementado")
+    start = time.perf_counter()
+    for _ in range(1500):
+        ls._impute_front_time(30.0)
+    elapsed = time.perf_counter() - start
+    # antes (reconstruye lognorm() dos veces por llamada) tardaba ~2.5s
+    # para 1500 llamadas -- con math.exp/scipy.special.ndtri deberia ser
+    # varios ordenes de magnitud mas rapido.
+    assert elapsed < 0.2, f"tardo {elapsed:.2f}s -- se esperaba evitar reconstruir lognorm()"
 
 
 def test_check_direct_strike_batch_coincide_con_referencia_por_rayo():

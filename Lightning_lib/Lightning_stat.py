@@ -599,13 +599,19 @@ class Lightning_stat:
         (tramos derechos, lejos de cualquier bifurcacion) sigue con la
         aproximacion rectangular + casquete de siempre.
 
-        Sigue siendo aproximado: el reparto de rayos entre ramas de un mismo
-        cluster es exacto (cada rayo va al segmento mas cercano), pero un
-        cluster cortado por `cluster_radius` (o por un `excluded_terminal_points`
-        que cae dentro del cluster) puede seguir sumando un casquete de mas
-        en ese extremo artificial -- `shapely.buffer()` no distingue un
-        extremo real de uno cortado para el calculo. A_buffer (para T_sim)
-        sigue siendo el estimador Monte Carlo exacto de self.Area, no se toca.
+        El reparto de rayos entre ramas de un mismo cluster es exacto (cada
+        rayo va al segmento mas cercano). El area del cluster tampoco pone
+        casquete redondo en un corte artificial (por `cluster_radius` o por
+        `excluded_terminal_points`): `_cluster_union_area_m2` bufferea cada
+        segmento con `cap_style='flat'` y agrega un circulo completo aparte
+        SOLO en los extremos que son terminales reales (grado 1, no
+        excluidos) -- antes de este fix, cualquier extremo del cluster
+        recibia el casquete redondo por defecto de `shapely.buffer()`
+        estuviera o no cortado artificialmente, sobreestimando el area en
+        ~110% en un caso de 3 ramas cortadas antes de llegar a un terminal
+        real (verificado numericamente, ver test de regresion). A_buffer
+        (para T_sim) sigue siendo el estimador Monte Carlo exacto de
+        self.Area, no se toca.
         """
         excluded_terminal_points = {
             (round(x, 3), round(y, 3)) for (x, y) in (excluded_terminal_points or ())
@@ -711,7 +717,9 @@ class Lightning_stat:
                 "Ng_i": _ng_i(m_i, area_km2),
             })
         for ci, group in enumerate(cluster_groups):
-            area_km2 = self._cluster_union_area_m2(group) / 1e6
+            area_km2 = self._cluster_union_area_m2(
+                group, endpoint_degree=endpoint_degree, excluded_terminal_points=excluded_terminal_points,
+            ) / 1e6
             m_i = counts.get(("cluster", ci), 0)
             tramos.append({
                 "tramo": len(tramos),
@@ -795,20 +803,47 @@ class Lightning_stat:
             groups.append(group)
         return groups
 
-    def _cluster_union_area_m2(self, segment_indices) -> float:
+    def _cluster_union_area_m2(
+        self, segment_indices, endpoint_degree=None, excluded_terminal_points=None,
+    ) -> float:
         """Area real (m^2) de la union de los buffers de los segmentos
         indicados -- reemplaza la suma de franjas independientes por la
         geometria real (shapely), evitando contar el solape entre ramas mas
-        de una vez."""
-        from shapely.geometry import LineString
+        de una vez.
+
+        Los segmentos se bufferean con cap_style='flat' (sin casquete
+        redondo en sus extremos): la mayoria de los extremos de un cluster
+        son cortes ARTIFICIALES de `_branch_clusters` (limitados a
+        `cluster_radius`), no terminales reales de la red -- bufferear con
+        el cap_style redondo por defecto de shapely le agregaba un
+        semicirculo de mas en CADA corte artificial (medido: ~110% de
+        sobreestimacion en un caso de 3 ramas, cada una cortada antes de
+        llegar a un terminal real). Los extremos que SI son terminales
+        reales (grado 1 en toda la red, no marcados como punto de corte de
+        particion) llevan su propio circulo completo agregado aparte, igual
+        que el casquete de terminal que ya usan los tramos normales."""
+        from shapely.geometry import LineString, Point
         from shapely.ops import unary_union
 
-        buffers = [
-            LineString([(ax, ay), (bx, by)]).buffer(self.buffer_radius)
+        endpoint_degree = endpoint_degree or {}
+        excluded_terminal_points = excluded_terminal_points or set()
+
+        shapes = [
+            LineString([(ax, ay), (bx, by)]).buffer(self.buffer_radius, cap_style="flat")
             for i in segment_indices
             for (ax, ay, bx, by) in [self.segments[i]]
         ]
-        return unary_union(buffers).area
+
+        cluster_points = set()
+        for i in segment_indices:
+            ax, ay, bx, by = self.segments[i]
+            cluster_points.add((round(ax, 3), round(ay, 3)))
+            cluster_points.add((round(bx, 3), round(by, 3)))
+        for pt in cluster_points:
+            if endpoint_degree.get(pt) == 1 and pt not in excluded_terminal_points:
+                shapes.append(Point(pt).buffer(self.buffer_radius))
+
+        return unary_union(shapes).area
 
     # ---------------------------------------------------------
     # File creation

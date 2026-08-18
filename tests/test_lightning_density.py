@@ -289,6 +289,83 @@ def test_compute_density_check_bifurcacion_lejos_de_tramos_rectos_no_los_afecta(
     assert tramo_con_rayo["tramo"] != cluster_tramo["tramo"]
 
 
+def test_compute_density_check_cluster_no_pone_casquete_redondo_en_cortes_artificiales():
+    # Hallazgo real (revisando el calculo de areas del buffer, caso real
+    # 216-13): _cluster_union_area_m2 bufferea cada segmento con el
+    # cap_style redondo por defecto de shapely -- en _net_con_lateral, el
+    # cluster de la bifurcacion (x=1000) absorbe los 2 segmentos de la
+    # principal completos (x=800-1000 y 1000-1200, cada uno mas largo que
+    # buffer_radius=100) MAS el lateral. Los cortes en x=800/x=1200 NO son
+    # terminales reales (grado 2, la principal sigue de largo hacia
+    # x=0/x=1800) -- solo la punta del lateral (1000,300) lo es (grado 1).
+    # Antes del fix, los 3 extremos exteriores del cluster (x=800, x=1200,
+    # Y la punta del lateral) recibian casquete redondo por igual --
+    # sobreestimando el area en los 2 cortes que en realidad continuan.
+    import math
+    from shapely.geometry import LineString, Point
+    from shapely.ops import unary_union
+
+    net = _net_con_lateral()
+    ls = Lightning_stat(net, num_events=0, sampling="buffer_reject", buffer_radius=100.0)
+    result = ls.compute_density_check(Ng_real=1.0, segment_length_km=0.7)
+    cluster_tramo = result["tramos"][-1]
+
+    # Los 3 segmentos absorbidos por el cluster: x=800-1000, 1000-1200 (de
+    # la principal) y el lateral 1000,0 -> 1000,300.
+    seg_800_1000 = LineString([(800.0, 0.0), (1000.0, 0.0)])
+    seg_1000_1200 = LineString([(1000.0, 0.0), (1200.0, 0.0)])
+    seg_lateral = LineString([(1000.0, 0.0), (1000.0, 300.0)])
+
+    shapes = [
+        seg_800_1000.buffer(100.0, cap_style="flat"),
+        seg_1000_1200.buffer(100.0, cap_style="flat"),
+        seg_lateral.buffer(100.0, cap_style="flat"),
+        Point(1000.0, 300.0).buffer(100.0),  # unica punta que es terminal real
+    ]
+    area_esperada_km2 = unary_union(shapes).area / 1e6
+    assert cluster_tramo["A_i_km2"] == pytest.approx(area_esperada_km2, rel=1e-6)
+
+    # Y tiene que ser bien menor que si los 3 extremos llevaran casquete
+    # redondo (el bug original: x=800 y x=1200 tambien recibian circulo,
+    # pese a no ser terminales reales).
+    shapes_bug_original = [
+        seg_800_1000.buffer(100.0),
+        seg_1000_1200.buffer(100.0),
+        seg_lateral.buffer(100.0),
+    ]
+    area_bug_original_km2 = unary_union(shapes_bug_original).area / 1e6
+    assert cluster_tramo["A_i_km2"] < area_bug_original_km2
+
+
+def test_compute_density_check_cluster_respeta_excluded_terminal_points():
+    # excluded_terminal_points tiene que aplicar tambien dentro de un
+    # cluster de bifurcacion, no solo en los tramos normales (ver
+    # test_compute_density_check_excluye_terminales_marcados_como_puntos_de_corte):
+    # un punto de corte de particion en el extremo del lateral no debe
+    # llevar casquete aunque localmente sea grado 1.
+    from shapely.geometry import LineString
+    from shapely.ops import unary_union
+
+    net = _net_con_lateral()
+    ls = Lightning_stat(net, num_events=0, sampling="buffer_reject", buffer_radius=100.0)
+    punto_de_corte = (1000.0, 300.0)  # punta del lateral, tratada como corte de particion
+    result = ls.compute_density_check(
+        Ng_real=1.0, segment_length_km=0.7, excluded_terminal_points={punto_de_corte},
+    )
+    cluster_tramo = result["tramos"][-1]
+
+    seg_800_1000 = LineString([(800.0, 0.0), (1000.0, 0.0)])
+    seg_1000_1200 = LineString([(1000.0, 0.0), (1200.0, 0.0)])
+    seg_lateral = LineString([(1000.0, 0.0), (1000.0, 300.0)])
+    shapes_sin_casquetes = [
+        seg_800_1000.buffer(100.0, cap_style="flat"),
+        seg_1000_1200.buffer(100.0, cap_style="flat"),
+        seg_lateral.buffer(100.0, cap_style="flat"),
+    ]
+    area_esperada_km2 = unary_union(shapes_sin_casquetes).area / 1e6
+    assert cluster_tramo["A_i_km2"] == pytest.approx(area_esperada_km2, rel=1e-6)
+
+
 def test_compute_density_check_tsim():
     net = _net_dos_nodos(1000.0)
     ls = Lightning_stat(net, num_events=0, sampling="buffer_reject", buffer_radius=100.0)

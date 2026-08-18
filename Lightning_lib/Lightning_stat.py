@@ -17,6 +17,14 @@ from .Lightning import Current_Waveform
 if TYPE_CHECKING:
     from Network_lib.Network import Network
 
+# _sample_reject_pool: cada lote nuevo pide este multiplicador veces la
+# cantidad de puntos que todavia faltan (no la cantidad total pedida) --
+# 5x balancea encontrar suficientes aceptados en el primer lote sin
+# sobre-generar de mas cuando el corredor cubre una fraccion razonable
+# del bounding box (medido con un corredor ~17.6% del bbox: converge en
+# 1 lote para la enorme mayoria de los rayos).
+_REJECT_POOL_BATCH_MULTIPLIER = 5
+
 
 def _dist_point_to_segment(px, py, ax, ay, bx, by) -> float:
     """Distancia minima del punto (px,py) al segmento (ax,ay)-(bx,by)."""
@@ -93,6 +101,10 @@ class Lightning_stat:
                 "Lightning_stat: no hay lineas para construir el buffer "
                 "(net.Lines vacio); use sampling='bbox' o cargue la red primero."
             )
+        # cache de los arrays NumPy de self.segments para _sample_reject
+        # (vectorizado) -- se arma perezosamente la primera vez que hace
+        # falta, self.segments no cambia despues de esto.
+        self._seg_matrix_cache = None
         # peso proporcional al area de la capsula (rect 2rL + circulo pi r^2)
         self.seg_weights = [
             2 * buffer_radius * math.hypot(bx - ax, by - ay)
@@ -153,6 +165,18 @@ class Lightning_stat:
 
         Ix2 = lognorm(s=self.std_dev_I2, scale=math.exp(math.log(self.Mean_Ip_2)))
 
+        # sampling="buffer_reject" (el default, y el unico modo reportado
+        # como lento en produccion): ubicaciones de TODOS los rayos de una
+        # sola vez, en lotes vectorizados compartidos -- ver
+        # _sample_reject_pool. bbox/capsule siguen igual que antes, un
+        # punto a la vez via _sample_location (no son el cuello de botella
+        # reportado).
+        locations = (
+            self._sample_reject_pool(self.Num_events)
+            if self.sampling == "buffer_reject"
+            else None
+        )
+
         for i in range(self.Num_events):
 
             Li = Lightning(case=i)
@@ -176,8 +200,8 @@ class Lightning_stat:
 
             Li.WaveformType = int(Current_Waveform.Heidler.value)
 
-            # Random spatial location (dentro del corredor/buffer, ver _sample_location)
-            x, y = self._sample_location()
+            # Random spatial location (dentro del corredor/buffer)
+            x, y = locations[i] if locations is not None else self._sample_location()
             Li.X_location = x
             Li.Y_location = y
 
@@ -334,7 +358,43 @@ class Lightning_stat:
         y = self.Ymin + rng.random() * (self.Ymax - self.Ymin)
         return x, y
 
+    def _segment_matrix(self):
+        """Arrays NumPy cacheados de self.segments (ax,ay,bx,by,dx,dy,seg2)
+        para vectorizar distancia punto-a-todos-los-segmentos -- mismo
+        patron que ya usa _compute_buffer_area (ver su docstring: bucle
+        Python puro O(muestras*segmentos), ~57s con ~289 segmentos, vs
+        ~4s vectorizado). Se arma una sola vez por instancia."""
+        if self._seg_matrix_cache is None:
+            seg = np.array(self.segments)  # (m,4): ax,ay,bx,by
+            ax, ay, bx, by = seg[:, 0], seg[:, 1], seg[:, 2], seg[:, 3]
+            dx, dy = bx - ax, by - ay
+            seg2 = dx * dx + dy * dy
+            seg2_safe = np.where(seg2 == 0.0, 1.0, seg2)  # evita division por 0
+            self._seg_matrix_cache = (ax, ay, bx, by, dx, dy, seg2, seg2_safe)
+        return self._seg_matrix_cache
+
+    def _min_dist_to_lines_batch(self, px: np.ndarray, py: np.ndarray) -> np.ndarray:
+        """Version vectorizada de _min_dist_to_lines: distancia minima de
+        CADA punto en (px,py) (arrays 1D) a todos los segmentos, de una
+        sola vez -- usada por _sample_reject en vez de min() por punto."""
+        ax, ay, bx, by, dx, dy, seg2, seg2_safe = self._segment_matrix()
+        px_b, py_b = px[:, None], py[:, None]      # (m,1) vs (1,num_seg)
+        t = ((px_b - ax) * dx + (py_b - ay) * dy) / seg2_safe
+        t = np.clip(t, 0.0, 1.0)
+        t = np.where(seg2 == 0.0, 0.0, t)           # degenerado -> t=0
+        cx, cy = ax + t * dx, ay + t * dy
+        dist = np.hypot(px_b - cx, py_b - cy)        # (m, num_seg)
+        return dist.min(axis=1)
+
     def _sample_reject(self):
+        """Un solo punto por llamada, bucle Python puro -- se mantiene tal
+        cual para _sample_location/otros usos puntuales. GenStatCurrents ya
+        NO llama esto para sampling="buffer_reject": vectorizar UN punto a
+        la vez (evaluado y descartado: ver historia en el commit que agrego
+        _sample_reject_pool) resulto igual o peor que este bucle simple --
+        el overhead de NumPy por llamada no se amortiza con lotes chicos.
+        La version que si vale la pena es _sample_reject_pool, que comparte
+        un lote grande entre TODOS los rayos que hacen falta de una vez."""
         rng = self._rng
         x = y = 0.0
         for _ in range(self.max_tries):
@@ -347,6 +407,47 @@ class Lightning_stat:
             "intentos (corredor chico frente al bbox); se usa el ultimo sorteo."
         )
         return x, y
+
+    def _sample_reject_pool(self, n: int) -> list:
+        """Genera las `n` ubicaciones de TODOS los rayos que hacen falta de
+        una sola vez, compartiendo lotes vectorizados entre ellas -- a
+        diferencia de _sample_reject (una llamada independiente por rayo),
+        que paga el overhead de NumPy N veces para lotes chicos sin
+        amortizarlo (medido: igual o peor que el bucle Python original, ver
+        _sample_reject). Cada lote nuevo pide
+        `_REJECT_POOL_BATCH_MULTIPLIER` veces la cantidad de puntos que
+        TODAVIA faltan (no la cantidad original `n`), para no sobre-generar
+        una vez que ya se acepto la mayoria -- si de 1000 rayos ya se
+        aceptaron 950, el siguiente lote pide candidatos para los 50 que
+        faltan, no para 1000 de nuevo."""
+        if n <= 0:
+            return []
+        rng = self._rng
+        accepted: list = []
+        tries_budget = self.max_tries * n
+        tries_used = 0
+        last_px, last_py = 0.0, 0.0
+        while len(accepted) < n and tries_used < tries_budget:
+            remaining = n - len(accepted)
+            batch = min(remaining * _REJECT_POOL_BATCH_MULTIPLIER, tries_budget - tries_used)
+            batch = max(batch, 1)
+            px = self.Xmin + np.array([rng.random() for _ in range(batch)]) * (self.Xmax - self.Xmin)
+            py = self.Ymin + np.array([rng.random() for _ in range(batch)]) * (self.Ymax - self.Ymin)
+            min_dist = self._min_dist_to_lines_batch(px, py)
+            idx = np.flatnonzero(min_dist <= self.buffer_radius)
+            for i in idx[:remaining]:
+                accepted.append((float(px[i]), float(py[i])))
+            last_px, last_py = float(px[-1]), float(py[-1])
+            tries_used += batch
+
+        if len(accepted) < n:
+            print(
+                f"* Aviso: no se encontraron suficientes puntos en el buffer "
+                f"({len(accepted)}/{n}) en {tries_used} intentos (corredor "
+                "chico frente al bbox); se rellena con el ultimo sorteo."
+            )
+            accepted.extend([(last_px, last_py)] * (n - len(accepted)))
+        return accepted
 
     def _sample_capsule(self):
         rng = self._rng
@@ -766,10 +867,93 @@ class Lightning_stat:
         return buffer
 
     def check_direct_strike(self, net: Network):
-        for L in self.Lightnings:
-            L.direc_strike, L.Rusck_max_voltage, L.min_dist, L.line_id_nearest = (
-                net.check_direct_strike(L.X_location, L.Y_location, L.Ih1)
-            )
+        """Version vectorizada: antes recorria cada rayo (self.Lightnings) y
+        por cada uno llamaba Network.check_direct_strike, que a su vez
+        recorria TODAS las lineas de la red -- O(rayos*lineas) en Python
+        puro (~4s medido con 1500 rayos x 300 lineas), ademas recalculando
+        get_max_height() (constante POR LINEA, no por rayo) y
+        velocity/beta/beta_factor (constante para TODA la red) en cada una
+        de esas 1500*300 iteraciones. Aca se arma una matriz
+        (rayos x lineas) con NumPy de una sola vez, y las constantes se
+        computan una sola vez.
+
+        Los efectos secundarios de Network.check_direct_strike /
+        Line.check_direct_strike sobre isFDTD/isDirectStrike/
+        node.Directstrike NO se replican aca a proposito: en el bucle
+        original quedaban sobreescritos en cada iteracion (solo
+        sobrevivia el ultimo rayo procesado -- un estado sin uso real
+        despues de este chequeo estadistico) y se recalculan
+        correctamente mas adelante, rayo por rayo, al armar el .atp real
+        de cada uno (Network.MakeATPBuffer llama check_direct_strike de
+        nuevo con el threshold_distance real de esa corrida, justo antes
+        de escribir ese .atp)."""
+        if not self.Lightnings:
+            return
+
+        from Network_lib.Network import _RUSCK_K, _SPEED_OF_LIGHT, _DEFAULT_CHANNEL_VELOCITY
+
+        ax, ay, bx, by, dx, dy, seg2, seg2_safe = self._segment_matrix()
+        lines = list(net.Lines)
+        hmax = np.array(
+            [line.Configuration.get_max_height() if line.Configuration else 0.0 for line in lines]
+        )
+        velocity = (
+            net.Channel_settings.Velocity
+            if net.Channel_settings is not None
+            else _DEFAULT_CHANNEL_VELOCITY
+        )
+        beta = velocity / _SPEED_OF_LIGHT
+        beta_factor = beta / math.sqrt(1 - beta**2)
+
+        px = np.array([L.X_location for L in self.Lightnings])
+        py = np.array([L.Y_location for L in self.Lightnings])
+        Imax = np.array([L.Ih1 for L in self.Lightnings])  # Amperios (GenStatCurrents ya hizo *1000)
+
+        px_b, py_b = px[:, None], py[:, None]
+        t = ((px_b - ax) * dx + (py_b - ay) * dy) / seg2_safe
+        t = np.clip(t, 0.0, 1.0)
+        t = np.where(seg2 == 0.0, 0.0, t)
+        cx, cy = ax + t * dx, ay + t * dy
+        distance = np.hypot(px_b - cx, py_b - cy)  # (n_strokes, n_lines)
+
+        Imax_kA = (Imax / 1e3)[:, None]  # (n_strokes,1)
+        Rs = 10 * Imax_kA**0.65
+        Rg = 0.9 * Rs
+        hmax_row = hmax[None, :]  # (1,n_lines)
+        # Rg>hmax_row implica hmax_row<Rg=0.9*Rs, asi que (Rg-hmax_row) esta
+        # en [0, 0.9*Rs) y el discriminante nunca es negativo (mismo
+        # supuesto implicito que el codigo original, que tampoco lo valida).
+        threshold = np.where(Rg > hmax_row, np.sqrt(Rs**2 - (Rg - hmax_row) ** 2), Rs)
+
+        is_direct_line = distance <= threshold  # (n_strokes, n_lines)
+        # distance==0 solo ocurre en una linea directamente impactada, que
+        # threshold>0 siempre clasifica is_direct_line=True para esa misma
+        # celda -- esa fila entera toma la rama de impacto directo mas abajo
+        # y jamas lee Vrusck[k], asi que el inf/nan resultante es inocuo
+        # (mismo comportamiento del original: Line.check_direct_strike ya
+        # retorna ds=True antes de que Network.check_direct_strike llegue a
+        # calcular Vrusck para esa linea).
+        with np.errstate(divide="ignore", invalid="ignore"):
+            Vrusck = _RUSCK_K * beta_factor * Imax_kA * hmax_row / distance  # (n_strokes, n_lines)
+
+        line_ids = [line.id for line in lines]
+
+        for k, L in enumerate(self.Lightnings):
+            direct_row = is_direct_line[k]
+            if direct_row.any():
+                # primer indice True, mismo orden que net.Lines -- igual al
+                # bucle original, que retornaba en el primer match.
+                j = int(np.argmax(direct_row))
+                L.direc_strike = True
+                L.Rusck_max_voltage = 0.0
+                L.min_dist = float(distance[k, j])
+                L.line_id_nearest = line_ids[j]
+            else:
+                j = int(np.argmin(distance[k]))
+                L.direc_strike = False
+                L.Rusck_max_voltage = float(Vrusck[k].max())
+                L.min_dist = float(distance[k, j])
+                L.line_id_nearest = line_ids[j]
 
     def create_dataframe(self):
         import pandas as pd

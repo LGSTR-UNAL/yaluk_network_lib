@@ -35,9 +35,9 @@ def write_models(write, self, settings):
                     write(f"   R{linea.idx:04d}{linea.Phases_connected[j].value}\n")
         write_model(write, self)
         for Linea in self.Lines:
-            if linea.isFDTD:
+            if Linea.isFDTD:
                 write(
-                    f"USE Yaluk{Linea.Configuration.Num_conductors} AS Yaluk{Linea.Configuration.Num_conductors:04d}\n"
+                    f"USE Yaluk{Linea.Configuration.Num_conductors} AS Yaluk{Linea.idx:04d}\n"
                 )
                 write("INPUT\n")
                 for i in range(Linea.Configuration.Num_conductors):

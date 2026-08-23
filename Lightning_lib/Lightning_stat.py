@@ -310,24 +310,36 @@ class Lightning_stat:
     # ---------------------------------------------------------
     def LoadFromPreviousRun(self, df) -> int:
         """Reconstruye rayos EXACTOS a partir de los parametros ya
-        calculados de una corrida anterior (Ih1/Ih2/tao11-22/n1/n2/X0/Y0),
-        sin pasar por ningun sorteo -- a diferencia de LoadFromDatabase, que
-        si vuelve a llamar _impute_front_time (con su propio numero
-        aleatorio) para el tiempo de frente. Filtra espacialmente igual que
-        LoadFromDatabase: un rayo puede quedar fuera del corredor de ESTE
-        sub-caso y pertenecer al de un sub-caso vecino -- no hay
-        deduplicacion entre sub-casos (spec de reutilizacion de rayos,
-        2026-08-12). A diferencia de LoadFromDatabase, NO lanza excepcion si
-        el resultado queda vacio: un sub-caso sin rayos reutilizables es un
-        resultado valido (se acepta el hueco), no un error."""
+        calculados de una corrida anterior (Ih1/Ih2/tao11-22/n1/n2 y la
+        posicion en X0_abs/Y0_abs), sin pasar por ningun sorteo -- a
+        diferencia de LoadFromDatabase, que si vuelve a llamar
+        _impute_front_time (con su propio numero aleatorio) para el tiempo
+        de frente. Filtra espacialmente igual que LoadFromDatabase: un rayo
+        puede quedar fuera del corredor de ESTE sub-caso y pertenecer al de
+        un sub-caso vecino -- no hay deduplicacion entre sub-casos (spec de
+        reutilizacion de rayos, 2026-08-12). A diferencia de
+        LoadFromDatabase, NO lanza excepcion si el resultado queda vacio: un
+        sub-caso sin rayos reutilizables es un resultado valido (se acepta
+        el hueco), no un error.
+
+        X0_abs/Y0_abs son la posicion ABSOLUTA del rayo (el mismo sistema
+        plano de structures.csv), no el X0/Y0 crudo de la corrida anterior:
+        ese es relativo a net.InitXY, que es el nodo 1 de la red que lo
+        genero, y cada sub-caso de area tiene el suyo. Reutilizar el valor
+        crudo desplaza el rayo por la diferencia entre origenes -- medido en
+        produccion el 2026-08-23: hasta 14,2 km, con rayos que terminaban
+        junto a un nodo donde en realidad nunca cayo ninguno. Aca se
+        convierte al marco local de ESTA red (restando su propio origen)
+        antes de filtrar por corredor y antes de ubicar el rayo."""
         accepted = []
         for _, row in df.iterrows():
-            X0, Y0 = float(row["X0"]), float(row["Y0"])
+            X0 = float(row["X0_abs"]) - self.x_init
+            Y0 = float(row["Y0_abs"]) - self.y_init
             if self._min_dist_to_lines(X0, Y0) > self.buffer_radius:
                 continue
-            accepted.append(row)
+            accepted.append((row, X0, Y0))
 
-        for i, row in enumerate(accepted):
+        for i, (row, X0, Y0) in enumerate(accepted):
             Li = Lightning(case=i)
             Li.initXY = self.initXY
             Li.initlocation = self.initlocation
@@ -341,8 +353,8 @@ class Lightning_stat:
             Li.n2 = float(row["n2"])
             Li.Magnitude = Li.Ih1
             Li.WaveformType = int(Current_Waveform.Heidler.value)
-            Li.X_location = float(row["X0"])
-            Li.Y_location = float(row["Y0"])
+            Li.X_location = X0
+            Li.Y_location = Y0
             self.Lightnings.append(Li)
 
         return 0

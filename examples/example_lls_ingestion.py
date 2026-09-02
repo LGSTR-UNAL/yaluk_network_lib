@@ -7,16 +7,18 @@ un sistema de localizacion de rayos (LLS), filtrados por el mismo corredor
 alrededor de las lineas que usa el modo estadistico
 (`buffer_radius`, default 1 km).
 
-IMPORTANTE (coordenadas): en `yaluk-server/main.py::network_setting()`,
-`net.InitXY` se fija directo desde las coordenadas locales de
-`structures.csv`/`vertices.txt` (un sistema de coordenadas propio del caso,
-NO el mismo que usa `CoordTransf`/EPSG:9377), mientras `net.InitLatLong`
-queda en el valor default de `Network()` sin actualizarse -- ver
-`context/reports/2026-08-01-ingesta-rayos-reales-lls.md`. Esto rompe la
-conversion lat/lon -> XY relativo de `LoadFromDatabase` para el pipeline
-real tal como esta hoy. Este ejemplo, en cambio, SI mantiene `InitXY`
-consistente con `InitLatLong` (se deriva proyectando el mismo punto), que es
-el patron correcto a seguir si se integra este modo en un flujo nuevo.
+IMPORTANTE (coordenadas): la conversion lat/lon -> XY relativo solo funciona
+si `net.InitXY` y el EPSG plano con el que `LoadFromDatabase` proyecta cada
+rayo son EL MISMO sistema. En el pipeline real eso lo resuelve
+`Sim,PlanarEpsg` de sim_settings.csv (o el CRS propio del GeoJSON de
+structures, si lo trae), que `yaluk-server/main.py` propaga a
+`Lightning_stat(planar_epsg=...)` -- ver
+`context/specs/2026-08-16-epsg-configurable-ingesta-lls-design.md`. Antes de
+esa resolucion configurable el EPSG estaba fijo y no coincidia con las
+coordenadas locales de `structures.csv`, asi que la ingesta nunca encontraba
+rayos dentro del corredor. Este ejemplo mantiene esa coherencia de forma
+explicita: PLANAR_EPSG se usa para derivar InitXY, para fabricar el CSV y
+para construir Lightning_stat -- ese es el patron a seguir.
 
 Correr: `python -m yaluk_network_lib.examples.example_lls_ingestion` desde
 `src_libs` (el paquete se resuelve por nombre, igual que en los tests via
@@ -31,6 +33,11 @@ import yaluk_network_lib.Network_lib as nl
 import yaluk_network_lib.Lightning_lib as ls
 from yaluk_network_lib.Network_lib.GeoTransform import CoordTransf, PointLatLng
 
+# EPSG plano del "caso": el equivalente en este ejemplo a Sim,PlanarEpsg de
+# sim_settings.csv. Tiene que ser el mismo en los 3 usos de abajo (InitXY,
+# el CSV LLS fabricado y Lightning_stat) o los rayos caen fuera del corredor.
+PLANAR_EPSG = 3116
+
 
 def build_small_network():
     """Red de 3 nodos / 2 lineas (~300 m), georreferenciada cerca de
@@ -39,7 +46,9 @@ def build_small_network():
     modulo) y los nodos se agregan con ctype="rel" (metros desde InitXY)."""
     net = nl.Network("uid_lls_example", "LLS_Example")
     net.InitLatLong = PointLatLng(6.20, -75.40)
-    x0, y0 = CoordTransf().to_projected(net.InitLatLong.Lat, net.InitLatLong.Lng)
+    x0, y0 = CoordTransf(dst_epsg=PLANAR_EPSG).to_projected(
+        net.InitLatLong.Lat, net.InitLatLong.Lng
+    )
     net.InitXY = nl.PointXY(x0, y0)
 
     conductor = nl.Conductor()
@@ -67,17 +76,13 @@ def make_sample_lls_csv(net) -> io.BytesIO:
     """Fabrica un CSV LLS de ejemplo con 4 filas: 2 rayos reales dentro del
     corredor de 1 km (se simulan), uno muy lejos y uno con datos invalidos
     (ambos se descartan por el filtro espacial / de validez)."""
-    transf = CoordTransf()
+    transf = CoordTransf(dst_epsg=PLANAR_EPSG)
 
     def latlon_near(x_rel, y_rel):
         # Inverso de to_projected, para fabricar una fila LLS en una
-        # posicion XY relativa conocida. CoordTransf.to_geographic() tiene
-        # un bug real conocido (devuelve (lon,lat) pero los nombra lat,lon,
-        # ver reporte de la sesion 2026-08-01) -- se corrige aqui con un
-        # swap explicito.
+        # posicion XY relativa conocida.
         x_abs, y_abs = x_rel + net.InitXY.X, y_rel + net.InitXY.Y
-        raw_lon, raw_lat = transf.to_geographic(x_abs, y_abs)
-        return raw_lat, raw_lon
+        return transf.to_geographic(x_abs, y_abs)
 
     rows = []
     lat, lon = latlon_near(50, 30)        # cerca de la primera linea -> dentro del corredor
@@ -101,7 +106,9 @@ if __name__ == "__main__":
 
     print("Cargando rayos reales desde el CSV LLS de ejemplo (4 filas: "
           "2 dentro del corredor, 1 lejos, 1 invalida)...")
-    lig_stat = ls.Lightning_stat(net, M="Database", database_buffer=lls_buffer)
+    lig_stat = ls.Lightning_stat(
+        net, M="Database", database_buffer=lls_buffer, planar_epsg=PLANAR_EPSG
+    )
 
     print(f"\nRayos reales dentro del corredor: {len(lig_stat.Lightnings)}")
     for L in lig_stat.Lightnings:

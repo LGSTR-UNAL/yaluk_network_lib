@@ -54,6 +54,7 @@ class Lightning_stat:
         max_tries: int = 50000,
         database_buffer=None,
         replay_df=None,
+        single_stroke=None,
         buffer_area_rel_error: float = 0.01,
         buffer_area_max_samples: int = 200000,
         planar_epsg: int = 3116,
@@ -142,13 +143,17 @@ class Lightning_stat:
         elif M == "Replay":
             self.LoadFromPreviousRun(replay_df)
             self.check_direct_strike(net)
+        elif M == "Single":
+            self.LoadSingleStroke(*single_stroke)
+            self.check_direct_strike(net)
 
         # sampling="bbox" es el modo legacy: el area sigue siendo la del
         # rectangulo, no la del corredor (los puntos SI cubren todo el bbox).
-        # M distinto de ProbDistribution/Database/Replay (stub futuro) tampoco corre
-        # sobre el corredor, asi que tambien usa el area del rectangulo.
+        # M distinto de ProbDistribution/Database/Replay/Single (stub futuro)
+        # tampoco corre sobre el corredor, asi que tambien usa el area del
+        # rectangulo.
         bbox_area = (self.Xmax - self.Xmin) * (self.Ymax - self.Ymin)
-        uses_corridor = M in ("ProbDistribution", "Database", "Replay") and self.sampling != "bbox"
+        uses_corridor = M in ("ProbDistribution", "Database", "Replay", "Single") and self.sampling != "bbox"
         self.Area: float = (
             self._compute_buffer_area(self.buffer_area_rel_error, self.buffer_area_max_samples)
             if uses_corridor else bbox_area
@@ -210,12 +215,19 @@ class Lightning_stat:
 
         return 0
 
-    def _impute_front_time(self, Ix_kA: float):
+    def _impute_front_time(self, Ix_kA: float, q: float | None = None):
         """Imputa Front_time y tf1 por correlacion lognormal con la magnitud
         (misma formula que usaba GenStatCurrents inline). `Ix_kA` es la
         corriente en kA (magnitud, antes de escalar a A). Reutilizado por
         GenStatCurrents (corriente muestreada) y por LoadFromDatabase
-        (corriente real de un LLS)."""
+        (corriente real de un LLS).
+
+        `q` es el cuantil de la lognormal del tiempo de frente. None (el
+        default) sortea, que es lo que hacen GenStatCurrents y
+        LoadFromDatabase. El modo Single pasa q=0.5 (la mediana) para que un
+        rayo definido a mano salga identico cada vez que se corre: sin eso,
+        pedir el mismo rayo dos veces da dos ondas distintas.
+        """
         # antes: lognorm(s=Std_I, scale=exp(log(Mean_Ip_X))).median() -- el
         # median de una lognormal con ese scale es EXACTAMENTE el scale
         # (propiedad estandar de la distribucion), asi que construir el
@@ -241,7 +253,8 @@ class Lightning_stat:
         # inversa normal estandar), verificado numericamente a ~1e-15 de
         # diferencia contra la formula original -- scipy.special.ndtri es
         # esa inversa normal, sin construir ningun objeto de distribucion.
-        Front_time = math.exp(Xtf + Std_tf * ndtri(self._rng.random())) * 1e-6
+        u = self._rng.random() if q is None else q
+        Front_time = math.exp(Xtf + Std_tf * ndtri(u)) * 1e-6
         tf1 = (Front_time ** (self.n1 + 1) / (self.n1 * self.tc)) ** (1 / self.n1)
         return Front_time, tf1
 
@@ -357,6 +370,52 @@ class Lightning_stat:
             Li.Y_location = Y0
             self.Lightnings.append(Li)
 
+        return 0
+
+    # ---------------------------------------------------------
+    # Rayo suelto definido a mano (diagnostico reproducible)
+    # ---------------------------------------------------------
+    def LoadSingleStroke(self, Ix_kA: float, X_abs: float, Y_abs: float) -> int:
+        """Un unico rayo definido a mano: corriente en kA y posicion
+        ABSOLUTA (el mismo sistema plano de structures.csv). El resto de la
+        doble Heidler sale de la misma correlacion que GenStatCurrents, pero
+        evaluada en la MEDIANA (q=0.5) en vez de sorteada, para que el rayo
+        sea reproducible: pedirlo dos veces con los mismos numeros tiene que
+        dar la misma onda.
+
+        A diferencia de LoadFromPreviousRun, un rayo fuera del corredor es un
+        error y no un hueco aceptable: aca el usuario pidio ESE rayo, y
+        devolver una corrida vacia en silencio no le dice que se equivoco de
+        coordenadas."""
+        Ix_kA = abs(float(Ix_kA))
+        if not math.isfinite(Ix_kA) or Ix_kA == 0:
+            raise ValueError(
+                f"Corriente invalida para el rayo suelto: {Ix_kA!r} kA "
+                "(se espera un valor finito distinto de cero)."
+            )
+
+        X0 = float(X_abs) - self.x_init
+        Y0 = float(Y_abs) - self.y_init
+        dist = self._min_dist_to_lines(X0, Y0)
+        if dist > self.buffer_radius:
+            raise ValueError(
+                f"El rayo cae a {dist:.0f} m de la linea mas cercana, fuera "
+                f"del corredor de {self.buffer_radius:.0f} m de esta red."
+            )
+
+        Li = Lightning(case=0)
+        Li.initXY = self.initXY
+        Li.initlocation = self.initlocation
+        Li.tc1 = self.tc
+        Li.n1 = self.n1
+        Li.Decay_time = self.tc
+        Li.Front_time, Li.tf1 = self._impute_front_time(Ix_kA, q=0.5)
+        Li.Ih1 = Ix_kA * 1000                       # kA -> A
+        Li.Magnitude = Li.Ih1
+        Li.WaveformType = int(Current_Waveform.Heidler.value)
+        Li.X_location = X0
+        Li.Y_location = Y0
+        self.Lightnings.append(Li)
         return 0
 
     # ---------------------------------------------------------

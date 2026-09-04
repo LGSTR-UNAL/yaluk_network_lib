@@ -43,6 +43,10 @@ class Lightning:
         self.direc_strike: bool = False
         self.Rusck_max_voltage: float = 0.0
 
+        # id del rayo del que este se reconstruyo (modo Replay). None cuando
+        # el rayo no viene de otra corrida.
+        self.origen_id: str | None = None
+
     @property
     def X_location(self) -> float:  # X Coordinate in meters from the initial location
         return self.Location_x

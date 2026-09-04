@@ -344,6 +344,8 @@ class Lightning_stat:
         junto a un nodo donde en realidad nunca cayo ninguno. Aca se
         convierte al marco local de ESTA red (restando su propio origen)
         antes de filtrar por corredor y antes de ubicar el rayo."""
+        import pandas as pd
+
         accepted = []
         for _, row in df.iterrows():
             X0 = float(row["X0_abs"]) - self.x_init
@@ -368,6 +370,9 @@ class Lightning_stat:
             Li.WaveformType = int(Current_Waveform.Heidler.value)
             Li.X_location = X0
             Li.Y_location = Y0
+            if "origen_id" in row:
+                valor = row["origen_id"]
+                Li.origen_id = None if pd.isna(valor) else str(valor)
             self.Lightnings.append(Li)
 
         return 0
@@ -1124,6 +1129,7 @@ class Lightning_stat:
                     "Rusck_max_voltage": L.Rusck_max_voltage,
                     "Lat": L.GeoLocation.Lat,
                     "Lng": L.GeoLocation.Lng,
+                    "origen_id": L.origen_id,
                 }
             )
             self.lightnings_df = pd.DataFrame(data)

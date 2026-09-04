@@ -158,3 +158,25 @@ def test_load_from_previous_run_usa_area_de_corredor_no_bbox():
     bbox_area = (ls_replay.Xmax - ls_replay.Xmin) * (ls_replay.Ymax - ls_replay.Ymin)
     assert ls_replay.Area == pytest.approx(ls_prob.Area, rel=0.05)
     assert ls_replay.Area < bbox_area * 0.5
+
+
+def test_load_from_previous_run_conserva_el_origen_id():
+    """Sin esto no hay forma de decir de que candidato elegido viene cada
+    .pl4: el rayo de diagnostico es nuevo y su id tambien."""
+    net = _net_linea(0, 0, 1000, 0)
+    df = _replay_df([{"X0_abs": 500.0, "Y0_abs": 10.0}])
+    df["origen_id"] = ["sim-origen-1"]
+    ls = Lightning_stat(net, 0, "Replay", replay_df=df)
+
+    assert len(ls.Lightnings) == 1
+    assert ls.Lightnings[0].origen_id == "sim-origen-1"
+    assert ls.create_dataframe().iloc[0]["origen_id"] == "sim-origen-1"
+
+
+def test_load_from_previous_run_sin_columna_origen_id_no_falla():
+    """Compatibilidad: el modo Replay se usa tambien para reutilizar rayos
+    (feature de 2026-08-12), donde no hay origen que rastrear."""
+    net = _net_linea(0, 0, 1000, 0)
+    ls = Lightning_stat(net, 0, "Replay",
+                        replay_df=_replay_df([{"X0_abs": 500.0, "Y0_abs": 10.0}]))
+    assert ls.Lightnings[0].origen_id is None

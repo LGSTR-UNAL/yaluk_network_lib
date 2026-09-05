@@ -55,6 +55,7 @@ class Lightning_stat:
         database_buffer=None,
         replay_df=None,
         single_stroke=None,
+        single_strict: bool = True,
         buffer_area_rel_error: float = 0.01,
         buffer_area_max_samples: int = 200000,
         planar_epsg: int = 3116,
@@ -134,6 +135,11 @@ class Lightning_stat:
 
         # Lightning database
         self.Lightnings: List[Lightning] = []
+        # Solo el modo Single los usa: la distancia medida al rayo pedido a
+        # mano (para poder informarla aunque se omita en silencio) y el rayo
+        # ya calculado, aceptado o no -- ver LoadSingleStroke.
+        self.single_dist_m: float | None = None
+        self.single_lightning: Lightning | None = None
         if M == "ProbDistribution":
             self.GenStatCurrents()
             self.check_direct_strike(net)
@@ -144,7 +150,7 @@ class Lightning_stat:
             self.LoadFromPreviousRun(replay_df)
             self.check_direct_strike(net)
         elif M == "Single":
-            self.LoadSingleStroke(*single_stroke)
+            self.LoadSingleStroke(*single_stroke, strict=single_strict)
             self.check_direct_strike(net)
 
         # sampling="bbox" es el modo legacy: el area sigue siendo la del
@@ -380,7 +386,8 @@ class Lightning_stat:
     # ---------------------------------------------------------
     # Rayo suelto definido a mano (diagnostico reproducible)
     # ---------------------------------------------------------
-    def LoadSingleStroke(self, Ix_kA: float, X_abs: float, Y_abs: float) -> int:
+    def LoadSingleStroke(self, Ix_kA: float, X_abs: float, Y_abs: float,
+                         strict: bool = True) -> int:
         """Un unico rayo definido a mano: corriente en kA y posicion
         ABSOLUTA (el mismo sistema plano de structures.csv). El resto de la
         doble Heidler sale de la misma correlacion que GenStatCurrents, pero
@@ -388,10 +395,17 @@ class Lightning_stat:
         sea reproducible: pedirlo dos veces con los mismos numeros tiene que
         dar la misma onda.
 
-        A diferencia de LoadFromPreviousRun, un rayo fuera del corredor es un
-        error y no un hueco aceptable: aca el usuario pidio ESE rayo, y
-        devolver una corrida vacia en silencio no le dice que se equivoco de
-        coordenadas."""
+        Con `strict=True` (default), un rayo fuera del corredor es un error:
+        aca el usuario pidio ESE rayo, y devolver una corrida vacia en
+        silencio no le dice que se equivoco de coordenadas. Con
+        `strict=False`, en cambio, caer fuera del corredor NO es un error:
+        con varios sub-casos (islas o areas) un rayo suelto solo puede caer
+        en el corredor de UNO, y los demas tienen que omitirlo en silencio,
+        igual que ya hace LoadFromPreviousRun -- que ninguno lo acepte es una
+        pregunta que le toca decidir a quien orquesta la corrida completa
+        (main.py), no a este sub-caso puntual. Una corriente invalida sigue
+        lanzando siempre, con o sin `strict`: es un error de entrada del
+        usuario, no una pregunta de geometria."""
         Ix_kA = abs(float(Ix_kA))
         if not math.isfinite(Ix_kA) or Ix_kA == 0:
             raise ValueError(
@@ -402,12 +416,14 @@ class Lightning_stat:
         X0 = float(X_abs) - self.x_init
         Y0 = float(Y_abs) - self.y_init
         dist = self._min_dist_to_lines(X0, Y0)
-        if dist > self.buffer_radius:
-            raise ValueError(
-                f"El rayo cae a {dist:.0f} m de la linea mas cercana, fuera "
-                f"del corredor de {self.buffer_radius:.0f} m de esta red."
-            )
+        self.single_dist_m = dist
 
+        # Se construye SIEMPRE, caiga o no dentro del corredor: los diez
+        # parametros de la doble Heidler (corriente + mediana de la
+        # correlacion tf-Ih) no dependen de la geometria, solo de la
+        # corriente y la posicion -- quien valida la respuesta sincrona de
+        # /pl4/rayo (main.py::_parametros_del_rayo_suelto) los necesita
+        # incluso cuando este sub-caso puntual termina omitiendo el rayo.
         Li = Lightning(case=0)
         Li.initXY = self.initXY
         Li.initlocation = self.initlocation
@@ -420,6 +436,16 @@ class Lightning_stat:
         Li.WaveformType = int(Current_Waveform.Heidler.value)
         Li.X_location = X0
         Li.Y_location = Y0
+        self.single_lightning = Li
+
+        if dist > self.buffer_radius:
+            if not strict:
+                return 0
+            raise ValueError(
+                f"El rayo cae a {dist:.0f} m de la linea mas cercana, fuera "
+                f"del corredor de {self.buffer_radius:.0f} m de esta red."
+            )
+
         self.Lightnings.append(Li)
         return 0
 

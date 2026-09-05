@@ -118,3 +118,29 @@ def test_modo_single_con_corriente_no_positiva_falla():
     net = _net_linea(0, 0, 1000, 0)
     with pytest.raises(ValueError):
         Lightning_stat(net, 0, "Single", single_stroke=(0.0, 500.0, 10.0))
+
+
+def test_modo_single_no_estricto_omite_el_rayo_fuera_del_corredor():
+    """Con varias islas, un rayo solo cae en el corredor de UNA. Las demas
+    deben omitirlo en silencio, como ya hace Replay, en vez de abortar la
+    corrida entera."""
+    net = _net_linea(0, 0, 1000, 0)
+    ls = Lightning_stat(net, 0, "Single", single_stroke=(45.0, 500.0, 5000.0),
+                        single_strict=False)
+    assert ls.Lightnings == []
+    assert ls.single_dist_m == pytest.approx(5000.0, rel=0.01)
+
+
+def test_modo_single_no_estricto_sigue_rechazando_corriente_invalida():
+    """Una corriente de cero es un error de entrada del usuario, no una
+    pregunta de geometria: no se omite en silencio nunca."""
+    net = _net_linea(0, 0, 1000, 0)
+    with pytest.raises(ValueError):
+        Lightning_stat(net, 0, "Single", single_stroke=(0.0, 500.0, 10.0),
+                       single_strict=False)
+
+
+def test_modo_single_estricto_sigue_siendo_el_default():
+    net = _net_linea(0, 0, 1000, 0)
+    with pytest.raises(ValueError, match="corredor"):
+        Lightning_stat(net, 0, "Single", single_stroke=(45.0, 500.0, 5000.0))
